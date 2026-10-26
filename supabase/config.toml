@@ -1,0 +1,6 @@
+project_id = "qalcgyzkicazkmzsouiu"
+
+[functions.voxie]
+# Voxie uses its own random bearer credentials, verified in the function.
+# The publishable project key is not a user identity token.
+verify_jwt = false
