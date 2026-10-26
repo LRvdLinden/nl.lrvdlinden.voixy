@@ -69,8 +69,9 @@ async function friendship(a: string, b: string) {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204 });
   const url = new URL(req.url);
-  const start = url.pathname.indexOf("/v2/");
-  const path = start >= 0 ? url.pathname.slice(start)
+  // Supabase forwards /voxie/v3/...; normalize both API versions.
+  const match = url.pathname.match(/\/(v[23]\/[^?#]*)$/);
+  const path = match ? `/${match[1]}`
     : url.pathname.endsWith("/health") ? "/health" : url.pathname;
   if (path === "/health") return json(200, { ok: true });
 
