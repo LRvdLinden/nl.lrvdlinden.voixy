@@ -319,6 +319,10 @@ final class VoxieV2Model: ObservableObject {
         let (result, response) = try await URLSession.shared.upload(for: request, from: data)
         guard let http = response as? HTTPURLResponse else { throw VoxieError.server }
         if http.statusCode == 409 { throw VoxieError.usernameTaken }
+        if !(200...299).contains(http.statusCode) {
+            let payload = (try? JSONSerialization.jsonObject(with: result)) as? [String: String]
+            throw VoxieError.detail("Serverfout \(http.statusCode): \(payload?["error"] ?? "onbekend")")
+        }
         try validate(response)
         return try JSONDecoder().decode(T.self, from: result)
     }
@@ -342,12 +346,13 @@ final class VoxieV2Model: ObservableObject {
 
 private struct OkReply: Decodable { let ok: Bool }
 private enum VoxieError: LocalizedError {
-    case address, server, usernameTaken
+    case address, server, usernameTaken, detail(String)
     var errorDescription: String? {
         switch self {
         case .address: return "Ongeldig HTTPS-adres"
         case .server: return "Serverfout of niet beschikbaar"
         case .usernameTaken: return "Deze gebruikersnaam bestaat al. Kies een andere."
+        case .detail(let message): return message
         }
     }
 }
