@@ -233,6 +233,8 @@ private struct PhoneSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var handle = ""
     @State private var photo: PhotosPickerItem?
+    @State private var isSaving = false
+    @State private var feedback = ""
 
     var body: some View {
         NavigationStack {
@@ -244,11 +246,20 @@ private struct PhoneSettingsSheet: View {
                         .textInputAutocapitalization(.never)
                     Button("Gebruikersnaam opslaan") {
                         Task {
-                            if await model.updateUsername(handle) { dismiss() }
+                            isSaving = true
+                            let saved = await model.updateUsername(handle)
+                            feedback = saved ? "Gebruikersnaam opgeslagen als @\(model.username) ✓" : model.status
+                            isSaving = false
                         }
                     }
                     .tint(Palette.yellow)
-                    .disabled(handle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isSaving || handle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    if isSaving { ProgressView("Opslaan…") }
+                    if !feedback.isEmpty {
+                        Text(feedback)
+                            .font(.footnote)
+                            .foregroundStyle(feedback.contains("✓") ? .green : .orange)
+                    }
                 }
                 Section("Profielfoto") {
                     PhotosPicker(selection: $photo, matching: .images) {
@@ -268,19 +279,28 @@ private struct PhoneSettingsSheet: View {
             .onChange(of: photo) { _, item in
                 Task {
                     guard let data = try? await item?.loadTransferable(type: Data.self),
-                          let image = UIImage(data: data) else { return }
+                          let image = UIImage(data: data) else {
+                        feedback = "De gekozen foto kon niet worden gelezen."
+                        return
+                    }
+                    isSaving = true
+                    feedback = "Profielfoto uploaden…"
                     let size = CGSize(width: 256, height: 256)
                     let rendered = UIGraphicsImageRenderer(size: size).image { _ in
                         let side = min(image.size.width, image.size.height)
-                        let rect = CGRect(x: (image.size.width - side)/2,
-                                          y: (image.size.height - side)/2, width: side, height: side)
-                        if let crop = image.cgImage?.cropping(to: rect) {
-                            UIImage(cgImage: crop).draw(in: CGRect(origin: .zero, size: size))
-                        } else { image.draw(in: CGRect(origin: .zero, size: size)) }
+                        let rect = CGRect(x: (size.width-image.size.width*size.width/side)/2,
+                                          y: (size.height-image.size.height*size.height/side)/2,
+                                          width: image.size.width*size.width/side,
+                                          height: image.size.height*size.height/side)
+                        image.draw(in: rect)
                     }
                     if let jpeg = rendered.jpegData(compressionQuality: 0.55) {
-                        _ = await model.updateAvatar(jpeg)
+                        let saved = await model.updateAvatar(jpeg)
+                        feedback = saved ? "Profielfoto opgeslagen ✓" : model.status
+                    } else {
+                        feedback = "De foto kon niet worden verwerkt."
                     }
+                    isSaving = false
                 }
             }
         }
