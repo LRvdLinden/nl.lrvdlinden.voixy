@@ -2,6 +2,7 @@
 // Deploy with `supabase functions deploy voxie --no-verify-jwt`.
 // All privileged access stays here; never embed Supabase secret keys in watchOS.
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { createRemoteJWKSet, jwtVerify } from "npm:jose@5";
 
 const projectURL = Deno.env.get("SUPABASE_URL")!;
 const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || (() => {
@@ -13,6 +14,8 @@ const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || (() => {
 if (!secret) throw new Error("Configure Supabase secret key for Edge Functions");
 
 const db = createClient(projectURL, secret, { auth: { persistSession: false } });
+const appleKeys = createRemoteJWKSet(new URL("https://appleid.apple.com/auth/keys"));
+const appleAudiences = ["nl.lrvdlinden.Voxie", "nl.lrvdlinden.Voxie.watchkitapp"];
 const encoder = new TextEncoder();
 const cors = { "content-type": "application/json", "cache-control": "no-store" };
 const json = (status: number, value: unknown) => new Response(JSON.stringify(value), { status, headers: cors });
@@ -30,9 +33,13 @@ async function userFrom(req: Request) {
   const authorization = req.headers.get("authorization") ?? "";
   const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
   if (token.length < 32 || token.length > 256) return null;
-  const { data, error } = await db.from("voxie_users").select("*")
-    .eq("token_hash", await sha256(token)).maybeSingle();
-  return error ? null : data;
+  const hash = await sha256(token);
+  const { data: session } = await db.from("voxie_sessions").select("user_id")
+    .eq("token_hash", hash).gt("expires_at", new Date().toISOString()).maybeSingle();
+  if (!session) return null;
+  const { data } = await db.from("voxie_users").select("*")
+    .eq("id", session.user_id).maybeSingle();
+  return data;
 }
 
 function decodeAudio(bytes: Uint8Array) {
@@ -43,9 +50,13 @@ function decodeAudio(bytes: Uint8Array) {
   return btoa(result);
 }
 
-async function bodyJSON(req: Request) {
-  if (Number(req.headers.get("content-length") || 0) > 1024) return null;
-  try { return await req.json(); } catch { return null; }
+async function bodyJSON(req: Request, maxBytes = 1024) {
+  if (Number(req.headers.get("content-length") || 0) > maxBytes) return null;
+  try {
+    const body = await req.text();
+    if (encoder.encode(body).length > maxBytes) return null;
+    return JSON.parse(body);
+  } catch { return null; }
 }
 
 async function friendship(a: string, b: string) {
@@ -63,8 +74,66 @@ Deno.serve(async (req: Request) => {
     : url.pathname.endsWith("/health") ? "/health" : url.pathname;
   if (path === "/health") return json(200, { ok: true });
 
-  // A random private credential is minted on registration. It is never logged.
+  // Client nonce is never trusted on its own: it must match a server-issued,
+  // single-use challenge and the signed nonce claim in Apple's identity token.
+  if (req.method === "POST" && path === "/v3/nonce") {
+    const nonce = randomHex(32);
+    const { error } = await db.from("voxie_login_challenges")
+      .insert({ nonce_hash: await sha256(nonce) });
+    return error ? fail(503, "login unavailable") : json(200, { nonce });
+  }
+
+  if (req.method === "POST" && path === "/v3/apple") {
+    const input = await bodyJSON(req, 12000);
+    if (typeof input?.identityToken !== "string" || input.identityToken.length > 8000 ||
+        typeof input?.nonce !== "string" || !/^[a-f0-9]{64}$/.test(input.nonce)) {
+      return fail(400, "invalid login request");
+    }
+    try {
+      const { payload } = await jwtVerify(input.identityToken, appleKeys, {
+        issuer: "https://appleid.apple.com", audience: appleAudiences,
+        algorithms: ["RS256"], clockTolerance: "5s"
+      });
+      if (typeof payload.sub !== "string" || payload.nonce !== await sha256(input.nonce))
+        return fail(401, "Apple identity mismatch");
+      // Atomic one-time consumption prevents replay of an intercepted login.
+      const { data: consumed, error: challengeError } = await db
+        .from("voxie_login_challenges").delete()
+        .eq("nonce_hash", await sha256(input.nonce))
+        .gt("expires_at", new Date().toISOString()).select("nonce_hash");
+      if (challengeError || !consumed?.length) return fail(401, "login expired");
+
+      let { data: user } = await db.from("voxie_users").select("*")
+        .eq("apple_subject", payload.sub).maybeSingle();
+      if (!user) {
+        for (let i = 0; i < 5; i++) {
+          const code = randomHex(4).toUpperCase();
+          const legacyHash = await sha256(randomHex(32));
+          const { data, error } = await db.from("voxie_users")
+            .insert({ apple_subject: payload.sub, display_name: "Voxie-gebruiker",
+              invite_code: code, token_hash: legacyHash })
+            .select("*").single();
+          if (!error && data) { user = data; break; }
+          if (error?.code !== "23505") return fail(500, "account creation failed");
+          const { data: existing } = await db.from("voxie_users")
+            .select("*").eq("apple_subject", payload.sub).maybeSingle();
+          if (existing) { user = existing; break; }
+        }
+      }
+      if (!user) return fail(503, "account unavailable");
+      const token = randomHex(32);
+      const { error: sessionError } = await db.from("voxie_sessions")
+        .insert({ token_hash: await sha256(token), user_id: user.id });
+      return sessionError ? fail(500, "session failed") :
+        json(200, { id: user.id, token, code: user.invite_code,
+          username: user.username, avatar: user.avatar_base64 });
+    } catch { return fail(401, "Apple sign-in failed"); }
+  }
+
+  // Retire unauthenticated legacy registration. Only verified Apple sign-in may
+  // mint sessions. Old builds must upgrade.
   if (req.method === "POST" && path === "/v2/register") {
+    return fail(410, "upgrade required");
     const input = await bodyJSON(req);
     const name = typeof input?.name === "string" ? input.name.trim() : "";
     if (name.length < 1 || name.length > 36) return fail(400, "invalid name");
@@ -83,6 +152,56 @@ Deno.serve(async (req: Request) => {
   const me = await userFrom(req);
   if (!me) return fail(401, "unauthorized");
 
+  if (req.method === "POST" && path === "/v3/profile") {
+    const input = await bodyJSON(req, 150000);
+    if (!input || typeof input !== "object") return fail(400, "invalid profile");
+    const change: Record<string, string | null> = {};
+    if ("username" in input) {
+      const username = typeof input.username === "string" ? input.username.trim().toLowerCase() : "";
+      if (!/^[a-z0-9_]{3,20}$/.test(username)) return fail(400, "username must be 3-20 letters, numbers or underscores");
+      change.username = username;
+      change.display_name = username;
+    }
+    if ("avatar" in input) {
+      const avatar = input.avatar;
+      if (avatar !== null && (typeof avatar !== "string" || avatar.length > 110000 ||
+          !/^[a-zA-Z0-9+/]*={0,2}$/.test(avatar))) return fail(400, "invalid avatar");
+      change.avatar_base64 = avatar;
+    }
+    if (!Object.keys(change).length) return fail(400, "empty profile");
+    const { data, error } = await db.from("voxie_users").update(change).eq("id", me.id)
+      .select("username,avatar_base64").single();
+    if (error?.code === "23505") return fail(409, "username taken");
+    if (error || !data) return fail(500, "profile update failed");
+    return json(200, { ok: true, username: data.username, avatar: data.avatar_base64 });
+  }
+
+  if (req.method === "POST" && path === "/v3/invite") {
+    const input = await bodyJSON(req);
+    const username = typeof input?.username === "string" ? input.username.trim().toLowerCase().replace(/^@/, "") : "";
+    if (!/^[a-z0-9_]{3,20}$/.test(username)) return fail(400, "invalid username");
+    const { data: recipient } = await db.from("voxie_users").select("id")
+      .eq("username", username).maybeSingle();
+    if (!recipient || recipient.id === me.id) return fail(404, "user not found");
+    if (await friendship(me.id, recipient.id)) return fail(409, "already friends");
+    const { error } = await db.from("voxie_invitations").upsert(
+      { sender: me.id, recipient: recipient.id, status: "pending" },
+      { onConflict: "sender,recipient" });
+    return error ? fail(500, "invite failed") : json(201, { ok: true });
+  }
+
+  const removeFriend = path.match(/^\/v3\/friends\/([a-f0-9-]{36})\/remove$/);
+  if (req.method === "POST" && removeFriend) {
+    const other = removeFriend[1];
+    const [user_a, user_b] = [me.id, other].sort();
+    const { error } = await db.from("voxie_friends").delete()
+      .eq("user_a", user_a).eq("user_b", user_b);
+    if (error) return fail(500, "remove failed");
+    await db.from("voxie_invitations").delete()
+      .or(`and(sender.eq.${me.id},recipient.eq.${other}),and(sender.eq.${other},recipient.eq.${me.id})`);
+    return json(200, { ok: true });
+  }
+
   if (req.method === "GET" && path === "/v2/state") {
     const { data: links, error: linkError } = await db.from("voxie_friends").select("user_a,user_b")
       .or(`user_a.eq.${me.id},user_b.eq.${me.id}`);
@@ -91,9 +210,10 @@ Deno.serve(async (req: Request) => {
     let friends: Array<{ id: string; name: string; available: boolean }> = [];
     if (friendIDs.length) {
       const { data, error } = await db.from("voxie_users")
-        .select("id,display_name,available").in("id", friendIDs);
+        .select("id,display_name,username,avatar_base64,available").in("id", friendIDs);
       if (error) return fail(500, "friends unavailable");
-      friends = (data ?? []).map(x => ({ id: x.id, name: x.display_name, available: x.available }));
+      friends = (data ?? []).map(x => ({ id: x.id, name: x.username ?? x.display_name,
+        username: x.username, avatar: x.avatar_base64, available: x.available }));
     }
     const { data: invites, error } = await db.from("voxie_invitations")
       .select("id,sender").eq("recipient", me.id).eq("status", "pending");
@@ -101,10 +221,20 @@ Deno.serve(async (req: Request) => {
     const senders = (invites ?? []).map(x => x.sender);
     let names = new Map<string, string>();
     if (senders.length) {
-      const { data } = await db.from("voxie_users").select("id,display_name").in("id", senders);
-      names = new Map((data ?? []).map(x => [x.id, x.display_name]));
+      const { data } = await db.from("voxie_users").select("id,display_name,username").in("id", senders);
+      names = new Map((data ?? []).map(x => [x.id, x.username ?? x.display_name]));
     }
-    return json(200, { id: me.id, code: me.invite_code, friends,
+    const { data: outgoingInvites } = await db.from("voxie_invitations")
+      .select("recipient").eq("sender", me.id).eq("status", "pending");
+    const pendingIDs = (outgoingInvites ?? []).map(x => x.recipient);
+    let pending: Array<{ id: string; name: string }> = [];
+    if (pendingIDs.length) {
+      const { data } = await db.from("voxie_users")
+        .select("id,display_name,username").in("id", pendingIDs);
+      pending = (data ?? []).map(x => ({ id: x.id, name: x.username ?? x.display_name }));
+    }
+    return json(200, { id: me.id, code: me.invite_code, username: me.username,
+      avatar: me.avatar_base64, friends, pending,
       invitations: (invites ?? []).map(x => ({ id: x.id, name: names.get(x.sender) || "Vriend" })) });
   }
 

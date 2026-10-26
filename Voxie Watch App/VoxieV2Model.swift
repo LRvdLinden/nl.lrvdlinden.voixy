@@ -7,19 +7,35 @@ struct VoxieFriend: Decodable, Identifiable {
     let id: String
     let name: String
     let available: Bool
+    let username: String?
+    let avatar: String?
 }
 
 struct VoxieInvitation: Decodable, Identifiable {
     let id: Int
     let name: String
 }
+struct VoxiePendingFriend: Decodable, Identifiable {
+    let id: String
+    let name: String
+}
 
-private struct RegisterReply: Decodable { let id: String; let token: String; let code: String }
+private struct AppleNonceReply: Decodable { let nonce: String }
+private struct AppleLoginReply: Decodable {
+    let id: String; let token: String; let code: String
+    let username: String?; let avatar: String?
+}
+private struct ProfileReply: Decodable {
+    let ok: Bool; let username: String?; let avatar: String?
+}
 private struct StateReply: Decodable {
     let id: String
     let code: String
     let friends: [VoxieFriend]
+    let pending: [VoxiePendingFriend]
     let invitations: [VoxieInvitation]
+    let username: String?
+    let avatar: String?
 }
 private struct FrameReply: Decodable { let frames: [VoxieFrame] }
 private struct VoxieFrame: Decodable { let id: Int; let sender: String; let pcm: String }
@@ -28,18 +44,20 @@ private struct Body: Encodable { let name: String?; let code: String?; let avail
 @MainActor
 final class VoxieV2Model: ObservableObject {
     @Published var server = SupabaseConfiguration.functionURL
-    @Published var name = UserDefaults.standard.string(forKey: "v2.name") ?? ""
+    @Published private(set) var username = ""
+    @Published private(set) var avatarBase64: String?
     @Published private(set) var code = ""
-    @Published private(set) var status = "Stel je profiel in"
+    @Published private(set) var status = "Log in met Apple"
     @Published private(set) var friends: [VoxieFriend] = []
+    @Published private(set) var pending: [VoxiePendingFriend] = []
     @Published private(set) var invitations: [VoxieInvitation] = []
     @Published var selectedFriendID: String?
     @Published private(set) var available = UserDefaults.standard.object(forKey: "v2.available") as? Bool ?? true
     @Published private(set) var isSpeaking = false
     @Published private(set) var isSending = false
 
-    private var identity = UserDefaults.standard.string(forKey: "v2.identity") ?? ""
-    private var token = UserDefaults.standard.string(forKey: "v2.token") ?? ""
+    private var identity = ""
+    private var token = VoxieCredentialStore.load() ?? ""
     private var refreshTask: Task<Void, Never>?
     private var audioTask: Task<Void, Never>?
     private var transmitTask: Task<Void, Never>?
@@ -53,45 +71,66 @@ final class VoxieV2Model: ObservableObject {
     var ready: Bool { !token.isEmpty && server.hasPrefix("https://") }
     var selected: VoxieFriend? { friends.first { $0.id == selectedFriendID } }
 
-    init() {
-        // A previous Voxie build used an unrelated Python host. Its opaque
-        // identity token must never be submitted to a different backend.
-        if UserDefaults.standard.string(forKey: "v2.server") != SupabaseConfiguration.functionURL {
-            token = ""
-            identity = ""
-            UserDefaults.standard.removeObject(forKey: "v2.token")
-            UserDefaults.standard.removeObject(forKey: "v2.identity")
-        }
-    }
+    func setError(_ message: String) { status = message }
 
-    func configure(server newServer: String, name newName: String) async {
-        let address = SupabaseConfiguration.functionURL
-        let newName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard address.hasPrefix("https://"), newName.count >= 1 else {
-            status = "Vul HTTPS-server en naam in"; return
-        }
-        stop()
-        if address != server || newName != name {
-            token = ""; identity = ""; code = ""
-            UserDefaults.standard.removeObject(forKey: "v2.token")
-            UserDefaults.standard.removeObject(forKey: "v2.identity")
-        }
-        server = address; name = newName
-        UserDefaults.standard.set(server, forKey: "v2.server")
-        UserDefaults.standard.set(name, forKey: "v2.name")
-        if token.isEmpty { await register() }
-        if let pushToken { await uploadPushToken(pushToken) }
-        start()
-    }
-
-    private func register() async {
+    func requestAppleNonce() async -> String? {
         do {
-            let result: RegisterReply = try await send("/v2/register", body: Body(name: name, code: nil, available: nil), authenticated: false)
+            var request = try makeRequest("/v3/nonce", method: "POST", authenticated: false)
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            try validate(response)
+            return try JSONDecoder().decode(AppleNonceReply.self, from: data).nonce
+        } catch {
+            status = "Kan niet verbinden. Controleer je internetverbinding."
+            return nil
+        }
+    }
+
+    func finishAppleSignIn(identityToken: String, nonce: String) async {
+        do {
+            var request = try makeRequest("/v3/apple", method: "POST", authenticated: false)
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let body = try JSONSerialization.data(withJSONObject: ["identityToken": identityToken, "nonce": nonce])
+            let (data, response) = try await URLSession.shared.upload(for: request, from: body)
+            try validate(response)
+            let result = try JSONDecoder().decode(AppleLoginReply.self, from: data)
             token = result.token; identity = result.id; code = result.code
-            UserDefaults.standard.set(token, forKey: "v2.token")
-            UserDefaults.standard.set(identity, forKey: "v2.identity")
-            status = "Je code: \(code)"
-        } catch { status = "Registratie: \(error.localizedDescription)" }
+            username = result.username ?? ""; avatarBase64 = result.avatar
+            VoxieCredentialStore.save(token)
+            status = username.isEmpty ? "Kies je gebruikersnaam op iPhone/iPad" : "Verbonden als @\(username)"
+            if let pushToken { await uploadPushToken(pushToken) }
+            start()
+        } catch { status = "Aanmelden: \(error.localizedDescription)" }
+    }
+
+    func updateUsername(_ value: String) async -> Bool {
+        let handle = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased().replacingOccurrences(of: "@", with: "")
+        guard handle.range(of: "^[a-z0-9_]{3,20}$", options: .regularExpression) != nil else {
+            status = "Gebruik 3–20 letters, cijfers of _"; return false
+        }
+        do {
+            let reply: ProfileReply = try await sendJSONObject("/v3/profile", value: ["username": handle])
+            username = reply.username ?? handle
+            status = "Verbonden als @\(username)"
+            return true
+        } catch { status = error.localizedDescription; return false }
+    }
+
+    func updateAvatar(_ jpeg: Data) async -> Bool {
+        guard jpeg.count <= 80000 else { status = "Foto is te groot"; return false }
+        do {
+            let reply: ProfileReply = try await sendJSONObject("/v3/profile", value: ["avatar": jpeg.base64EncodedString()])
+            avatarBase64 = reply.avatar
+            status = "Profielfoto opgeslagen"
+            return true
+        } catch { status = error.localizedDescription; return false }
+    }
+
+    func signOut() {
+        stop(); VoxieCredentialStore.clear(); token = ""; identity = ""
+        username = ""; avatarBase64 = nil; code = ""; friends = []; pending = []; invitations = []
+        selectedFriendID = nil; status = "Log in met Apple"
     }
 
     func start() {
@@ -125,11 +164,19 @@ final class VoxieV2Model: ObservableObject {
         isSending = false
     }
 
-    func invite(code: String) async {
+    func invite(username: String) async {
         do {
-            let _: OkReply = try await send("/v2/invite", body: Body(name: nil, code: code, available: nil))
+            let _: OkReply = try await sendJSONObject("/v3/invite", value: ["username": username])
             status = "Uitnodiging verstuurd"; await refresh()
         } catch { status = "Uitnodigen: \(error.localizedDescription)" }
+    }
+
+    func removeFriend(_ id: String) async {
+        do {
+            let _: OkReply = try await sendJSONObject("/v3/friends/\(id)/remove", value: [:])
+            if selectedFriendID == id { selectedFriendID = nil }
+            await refresh()
+        } catch { status = "Verwijderen: \(error.localizedDescription)" }
     }
 
     func uploadPushToken(_ pushToken: String) async {
@@ -203,7 +250,10 @@ final class VoxieV2Model: ObservableObject {
         do {
             let result: StateReply = try await get("/v2/state")
             code = result.code
+            username = result.username ?? ""
+            avatarBase64 = result.avatar
             friends = result.friends
+            pending = result.pending
             invitations = result.invitations
             if let id = selectedFriendID, !friends.contains(where: { $0.id == id }) { selectedFriendID = nil }
         } catch { status = "Netwerk: \(error.localizedDescription)" }
@@ -262,6 +312,17 @@ final class VoxieV2Model: ObservableObject {
         return try JSONDecoder().decode(T.self, from: result)
     }
 
+    private func sendJSONObject<T: Decodable>(_ path: String, value: [String: String]) async throws -> T {
+        var request = try makeRequest(path, method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let data = try JSONSerialization.data(withJSONObject: value)
+        let (result, response) = try await URLSession.shared.upload(for: request, from: data)
+        guard let http = response as? HTTPURLResponse else { throw VoxieError.server }
+        if http.statusCode == 409 { throw VoxieError.usernameTaken }
+        try validate(response)
+        return try JSONDecoder().decode(T.self, from: result)
+    }
+
     private func makeRequest(_ path: String, method: String = "GET", authenticated: Bool = true) throws -> URLRequest {
         guard let url = URL(string: server + path), url.scheme == "https" else { throw VoxieError.address }
         var request = URLRequest(url: url)
@@ -281,11 +342,12 @@ final class VoxieV2Model: ObservableObject {
 
 private struct OkReply: Decodable { let ok: Bool }
 private enum VoxieError: LocalizedError {
-    case address, server
+    case address, server, usernameTaken
     var errorDescription: String? {
         switch self {
         case .address: return "Ongeldig HTTPS-adres"
         case .server: return "Serverfout of niet beschikbaar"
+        case .usernameTaken: return "Deze gebruikersnaam bestaat al. Kies een andere."
         }
     }
 }

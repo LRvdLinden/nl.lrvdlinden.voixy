@@ -19,9 +19,14 @@ final class LiveAudio {
 
     func prepare() throws {
         let session = AVAudioSession.sharedInstance()
-        // `.defaultToSpeaker` is iOS-only and explicitly unavailable on watchOS.
-        // Let watchOS route audio to the Watch speaker or connected audio device.
+        #if os(iOS)
+        // Walkietalkie audio should play from the iPhone speaker by default.
+        try session.setCategory(.playAndRecord, mode: .voiceChat,
+                                options: [.defaultToSpeaker, .allowBluetooth])
+        #else
+        // watchOS routes audio to the Watch speaker or connected audio device.
         try session.setCategory(.playAndRecord, mode: .voiceChat)
+        #endif
         try session.setActive(true)
         if !playback.isRunning { try playback.start() }
         if !player.isPlaying { player.play() }
