@@ -1,4 +1,5 @@
--- A frame is removed when each selected playback device confirms playback.
+-- A frame is removed after the first successful playback confirmation,
+-- whether on iPhone/iPad or Apple Watch.
 alter table public.voxie_audio_frames
   add column if not exists played_phone boolean not null default false,
   add column if not exists played_watch boolean not null default false;
