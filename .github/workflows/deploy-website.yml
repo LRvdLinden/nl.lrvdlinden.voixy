@@ -1,0 +1,46 @@
+name: Deploy voxie.online website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - '.github/workflows/deploy-website.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download website
+        uses: actions/checkout@v4
+
+      - name: Require FTP credentials
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_PORT: ${{ secrets.FTP_PORT }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASS: ${{ secrets.FTP_PASSSWORD || secrets.FTP_PASSWORD }}
+        run: |
+          test -n "$FTP_SERVER" || { echo 'Missing FTP_SERVER'; exit 1; }
+          test -n "$FTP_PORT" || { echo 'Missing FTP_PORT'; exit 1; }
+          test -n "$FTP_USER" || { echo 'Missing FTP_USER'; exit 1; }
+          test -n "$FTP_PASS" || { echo 'Missing FTP_PASSSWORD (or FTP_PASSWORD)'; exit 1; }
+
+      - name: Upload site via secure FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          port: ${{ secrets.FTP_PORT }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASSSWORD || secrets.FTP_PASSWORD }}
+          protocol: ${{ vars.FTP_PROTOCOL || 'ftps' }}
+          local-dir: ./website/
+          server-dir: ${{ vars.FTP_REMOTE_DIR || './' }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
