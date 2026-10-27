@@ -8,6 +8,10 @@ struct VoxiePhoneApp: App {
         WindowGroup {
             VoxiePhoneHomeView()
                 .environmentObject(model)
+                .onOpenURL { url in model.openSharedProfile(url) }
+                .onContinueUserActivity(NSUserActivityTypeBrowsingWeb) { activity in
+                    if let url = activity.webpageURL { model.openSharedProfile(url) }
+                }
         }
     }
 }
