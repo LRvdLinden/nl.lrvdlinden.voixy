@@ -12,8 +12,7 @@ struct VoxiePhoneHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var showFriends = false
     @State private var showSettings = false
-    @State private var showTalk = false
-    @State private var holding = false
+    @State private var showFriendDetails = false
     @State private var handlingInvitationID: Int?
     @State private var invitationFeedback = ""
     @State private var revealedFriendID: String?
@@ -84,23 +83,29 @@ struct VoxiePhoneHomeView: View {
         } message: {
             Text("Wil je @\(model.pendingProfileUsername ?? "deze persoon") uitnodigen als vriend op Voxie? Deze persoon moet je verzoek daarna nog accepteren.")
         }
-        .sheet(isPresented: $showTalk) {
+        .sheet(isPresented: $showFriendDetails) {
             NavigationStack {
-                ScrollView {
-                    talkButton
-                        .padding(.top, 30)
-                        .padding(.horizontal, 20)
+                VStack(spacing: 22) {
+                    Image(systemName: "applewatch")
+                        .font(.system(size: 78))
+                        .foregroundStyle(Palette.yellow)
+                    Text("Praat op je Apple Watch")
+                        .font(.title2.bold())
+                    Text("Open Voxie op je Watch, kies \(model.selected?.name ?? "deze vriend") en houd daar de gele knop ingedrukt. Op je iPhone beheer je alleen vrienden en instellingen.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                    Spacer()
                 }
+                .padding(26)
                 .background(.black)
-                .navigationTitle(model.selected?.name ?? "Praten")
+                .navigationTitle(model.selected?.name ?? "Vriend")
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Gereed") { showTalk = false }
+                        Button("Gereed") { showFriendDetails = false }
                     }
                 }
             }
             .preferredColorScheme(.dark)
-            .onDisappear { model.endSpeaking() }
         }
         .onAppear {
             VoxieWatchBridge.shared.activate()
@@ -123,20 +128,11 @@ struct VoxiePhoneHomeView: View {
                 VoxieWatchBridge.shared.publish(token: nil)
             }
         }
-        .onChange(of: model.username) { _, username in
-            if !username.isEmpty { VoxiePushToTalk.shared.attach(model) }
-        }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active: model.start()
-            case .inactive:
-                // System sheets (including microphone permission) can briefly
-                // deactivate the app. Keep network workers and queued audio alive.
-                holding = false
-                model.endSpeaking()
+            case .inactive: break
             case .background:
-                holding = false
-                model.endSpeaking()
                 model.stop()
             @unknown default: break
             }
@@ -248,7 +244,7 @@ struct VoxiePhoneHomeView: View {
                              return
                          }
                          model.selectedFriendID = friend.id
-                         showTalk = true
+                         showFriendDetails = true
                      } label: {
                         HStack(spacing: 12) {
                             if let encoded = friend.avatar,
@@ -373,51 +369,10 @@ struct VoxiePhoneHomeView: View {
             handlingInvitationID = nil
         }
     }
-
-    private var talkButton: some View {
-        VStack(spacing: 12) {
-            Text(model.selected.map { "PRATEN MET \($0.name.uppercased())" } ?? "KIES EEN VRIEND")
-                .font(.caption.weight(.black))
-                .tracking(1.8)
-                .foregroundStyle(Palette.yellow)
-
-            ZStack {
-                Circle()
-                    .stroke(Palette.yellow.opacity(0.25), lineWidth: 2)
-                    .frame(width: 254, height: 254)
-                Circle()
-                    .fill(holding ? Palette.yellow.opacity(0.72) : Palette.yellow)
-                    .frame(width: 220, height: 220)
-                VStack(spacing: 9) {
-                    Image(systemName: holding ? "waveform" : "mic.fill")
-                        .font(.system(size: 58, weight: .heavy))
-                    Text(holding ? "OPNEMEN" : "HOUD VAST")
-                        .tracking(2)
-                        .font(.system(size: 17, weight: .black, design: .rounded))
-                }
-                .foregroundStyle(.black)
-            }
-            .contentShape(Circle())
-            .gesture(DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    guard !holding else { return }
-                    holding = true
-                    model.beginSpeaking()
-                }
-                .onEnded { _ in
-                    holding = false
-                    model.endSpeaking()
-                })
-            .accessibilityLabel("Houd vast om te praten en laat los om te verzenden")
-            .padding(.top, 4)
-        }
-        .frame(maxWidth: .infinity)
-    }
 }
 
 private struct PhoneOnboardingFlow: View {
     @EnvironmentObject private var model: VoxieV2Model
-    @ObservedObject private var ptt = VoxiePushToTalk.shared
     @Binding var step: Int
     let onFinish: () -> Void
 
@@ -427,7 +382,6 @@ private struct PhoneOnboardingFlow: View {
     @State private var avatarFeedback = ""
     @State private var feedback = ""
     @State private var busy = false
-    @State private var selectedDelivery = "both"
 
     var body: some View {
         VStack(spacing: 18) {
@@ -443,13 +397,12 @@ private struct PhoneOnboardingFlow: View {
                 case 3: usernameStep
                 case 4: photoStep
                 case 5: deliveryStep
-                case 6: pushToTalkStep
                 default: finishStep
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             if step != 2 {
-                Text("\(min(step + 1, 8)) / 8")
+                Text("\(min(step + 1, 7)) / 7")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.gray)
                     .padding(.bottom, 12)
@@ -460,7 +413,6 @@ private struct PhoneOnboardingFlow: View {
         .preferredColorScheme(.dark)
         .onAppear {
             handle = model.username
-            selectedDelivery = model.deliveryTarget
             if model.ready && step < 3 { step = 3 }
         }
         .onChange(of: model.ready) { _, ready in
@@ -477,7 +429,7 @@ private struct PhoneOnboardingFlow: View {
                         .foregroundStyle(Palette.yellow)
                     Text("Welkom bij Voxie")
                         .font(.largeTitle.bold())
-                    Text("Praat direct met je vrienden via iPhone, iPad of Apple Watch.")
+                    Text("Jouw iPhone beheert je Voxie-profiel en vrienden. Op je Apple Watch praat je met elkaar.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
                     Text("Veeg naar links")
@@ -489,7 +441,7 @@ private struct PhoneOnboardingFlow: View {
                         .foregroundStyle(Palette.yellow)
                     Text("Houd vast om te praten")
                         .font(.title.bold())
-                    Text("Nodig eerst vrienden uit. Kies daarna een vriend, houd de knop ingedrukt en laat los om je spraak te verzenden.")
+                    Text("Nodig vrienden uit via je iPhone of Watch. Kies op je Watch een vriend, houd de gele knop ingedrukt en laat los om je stem te verzenden.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
                 }.tag(1)
@@ -497,10 +449,10 @@ private struct PhoneOnboardingFlow: View {
                     Image(systemName: "speaker.wave.3.fill")
                         .font(.system(size: 76))
                         .foregroundStyle(Palette.yellow)
-                    Text("Ook als Voxie gesloten is")
+                    Text("Ontvang op je Apple Watch")
                         .font(.title.bold())
                         .multilineTextAlignment(.center)
-                    Text("Met Apple's Push to Talk kan je iPhone of iPad automatisch spraak ontvangen op de achtergrond. Je activeert dit na het instellen van je profiel. Apple brengt de app niet vanzelf zichtbaar naar de voorgrond.")
+                    Text("Spraak wordt uitsluitend op je Watch afgespeeld terwijl de Voxie-app daar actief is. Apple staat niet toe om een gesloten Watch-app automatisch voor zo'n gesprek te starten.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
                 }.tag(2)
@@ -605,28 +557,20 @@ private struct PhoneOnboardingFlow: View {
     }
 
     private var deliveryStep: some View {
-        VStack(spacing: 22) {
-            Text("Waar wil je spraak ontvangen?")
+        VStack(spacing: 24) {
+            Image(systemName: "applewatch")
+                .font(.system(size: 84))
+                .foregroundStyle(Palette.yellow)
+            Text("Alleen op je Apple Watch")
                 .font(.title.bold())
                 .multilineTextAlignment(.center)
-            ForEach(["watch", "phone", "both"], id: \.self) { choice in
-                Button {
-                    selectedDelivery = choice
-                } label: {
-                    HStack {
-                        Text(deliveryLabel(choice))
-                        Spacer()
-                        Image(systemName: selectedDelivery == choice ? "checkmark.circle.fill" : "circle")
-                    }
-                    .padding(16)
-                    .background(Palette.charcoal, in: RoundedRectangle(cornerRadius: 14))
-                }
-                .foregroundStyle(selectedDelivery == choice ? Palette.yellow : .white)
-            }
-            Button("Keuze opslaan") {
+            Text("Voxie speelt stemmen uitsluitend af op je Apple Watch. Je iPhone of iPad gebruikt je voor profiel, uitnodigingen, vriendschapsverzoeken en instellingen. Zorg dat Voxie op je Watch openstaat tijdens een gesprek.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Instellen voor Apple Watch") {
                 Task {
                     busy = true
-                    let saved = await model.updateDeliveryTarget(selectedDelivery)
+                    let saved = await model.updateDeliveryTarget("watch")
                     feedback = saved ? "" : model.status
                     busy = false
                     if saved { step = 6 }
@@ -639,44 +583,6 @@ private struct PhoneOnboardingFlow: View {
             Text(feedback).font(.footnote).foregroundStyle(.orange)
         }
     }
-
-    private func deliveryLabel(_ value: String) -> String {
-        switch value {
-        case "watch": return "Alleen Apple Watch"
-        case "phone": return "Alleen iPhone/iPad"
-        default: return "Beide apparaten"
-        }
-    }
-
-    private var pushToTalkStep: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "waveform.badge.mic")
-                .font(.system(size: 83, weight: .medium))
-                .foregroundStyle(Palette.yellow)
-            Text("Ontvang spraak op de achtergrond")
-                .font(.title.bold())
-                .multilineTextAlignment(.center)
-            Text("Activeer Apple's Push to Talk één keer op je iPhone of iPad. Daarna kan Voxie inkomende spraak ontvangen als je de app niet open hebt. iOS opent de app daarbij niet zichtbaar. Je Apple Watch ontvangt nog wanneer Voxie actief is.")
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Text(ptt.status)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Palette.yellow)
-                .multilineTextAlignment(.center)
-            if ptt.isActive {
-                Button("Verder") { step = 7 }
-                    .buttonStyle(.borderedProminent).tint(Palette.yellow).foregroundStyle(.black)
-                    .controlSize(.large)
-            } else {
-                Button("Activeer Push to Talk") { ptt.join() }
-                    .buttonStyle(.borderedProminent).tint(Palette.yellow).foregroundStyle(.black)
-                    .controlSize(.large)
-            }
-            Button("Voorlopig overslaan") { step = 7 }
-                .foregroundStyle(.secondary)
-        }
-    }
-
     private var finishStep: some View {
         VStack(spacing: 22) {
             Image(systemName: "checkmark.circle.fill")
@@ -698,7 +604,6 @@ private struct PhoneOnboardingFlow: View {
 
 private struct PhoneSettingsSheet: View {
     @EnvironmentObject private var model: VoxieV2Model
-    @ObservedObject private var ptt = VoxiePushToTalk.shared
     @Environment(\.dismiss) private var dismiss
     var onboarding = false
     var onSetupComplete: () -> Void = {}
@@ -706,7 +611,6 @@ private struct PhoneSettingsSheet: View {
     @State private var photo: PhotosPickerItem?
     @State private var isSaving = false
     @State private var feedback = ""
-    @State private var savingDelivery = false
     @State private var showDeleteConfirmation = false
     @State private var deletingAccount = false
 
@@ -749,34 +653,12 @@ private struct PhoneSettingsSheet: View {
                     }
                     .tint(Palette.yellow)
                 }
-                Section("Berichten ontvangen op") {
-                    Picker("Ontvangst", selection: Binding(
-                        get: { model.deliveryTarget },
-                        set: { choice in
-                            savingDelivery = true
-                            Task {
-                                let saved = await model.updateDeliveryTarget(choice)
-                                feedback = saved ? "Ontvangst opgeslagen ✓" : model.status
-                                savingDelivery = false
-                            }
-                        }
-                    )) {
-                        Text("Alleen Apple Watch").tag("watch")
-                        Text("Alleen iPhone/iPad").tag("phone")
-                        Text("Beide apparaten").tag("both")
-                    }
-                    .disabled(savingDelivery)
-                    Text("Bepaalt waar inkomende spraak wordt afgespeeld zolang Voxie actief is.")
+                Section("Walkietalkie") {
+                    Label("Alleen Apple Watch", systemImage: "applewatch")
+                        .foregroundStyle(Palette.yellow)
+                    Text("Alleen je Apple Watch neemt spraak op en speelt spraak af. Houd de Watch-app open tijdens gesprekken. Je iPhone en iPad zijn uitsluitend voor profiel, vrienden en instellingen.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
-                }
-                Section("Ontvangst wanneer de app gesloten is") {
-                    Text(ptt.status).font(.footnote).foregroundStyle(.secondary)
-                    Button("Activeer Push to Talk") { ptt.join() }
-                        .disabled(!model.ready || model.username.isEmpty)
-                    Button("Deactiveer achtergrondontvangst", role: .destructive) { ptt.leave() }
-                    Text("Activeer dit eenmalig op iPhone of iPad. Apple kan Voxie dan op de achtergrond wekken. Op Apple Watch werkt spraakontvangst vooralsnog terwijl de app geopend is.")
-                        .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Geluidsvolume") {
                     HStack {
@@ -804,8 +686,8 @@ private struct PhoneSettingsSheet: View {
                             .font(.headline)
                             .frame(maxWidth: .infinity)
                             .tint(Palette.yellow)
-                            .disabled(model.username.isEmpty || isSaving || savingDelivery)
-                        Text("Sla eerst je gebruikersnaam op en kies hierboven waar je spraak wilt ontvangen.")
+                            .disabled(model.username.isEmpty || isSaving)
+                        Text("Sla eerst je gebruikersnaam op. De walkietalkie werkt alleen op je Apple Watch.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
