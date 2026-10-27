@@ -11,7 +11,7 @@ Geel-zwarte iPhone- en Apple Watch-app. Houd de gele knop ingedrukt om maximaal 
 | Widget/Control Bundle ID | `nl.lrvdlinden.Voxie.watchkitapp.control` |
 | Development Team | `EU3UY476T6` |
 | Marketingversie | `1.0.0` |
-| Build | `16` |
+| Build | `17` |
 | Type | iPhone-companion met zelfstandig werkende Watch-app |
 | Backend | Supabase Edge Function |
 
@@ -33,6 +33,14 @@ Wanneer de eerste migratie al handmatig is uitgevoerd en niet in Supabase's migr
 De server controleert Apple ID-tokens met Apple's ondertekende sleutelset en gebruikt korte, eenmalige login-challenges. Hij bewaart een unieke, niet-hoofdlettergevoelige gebruikersnaam, de gekozen avatar en een vriendenlijst per Apple-account. Na Apple-aanmelding op de iPhone ontvangt de gekoppelde Watch een eigen sessie via WatchConnectivity. Audioframes worden na 30 seconden niet meer opgehaald. Voor publieke lancering zijn aanvullende beveiligingsmaatregelen nodig, zoals rate limiting, sessie-intrekking, quotas, opschoning en een privacybeleid. Audio is HTTPS-versleuteld, maar niet end-to-end-versleuteld.
 
 ## Xcode
+
+### Build 17 — Apple Push to Talk-signing en websitehero
+
+- De gemelde `com.apple.pushtotalk.instantiation error 3` komt **vóór servercommunicatie**: de ondertekende app mist de APNs-omgeving (`aps-environment`). Het iPhone-target zet deze nu expliciet op `development` voor Debug en `production` voor Release. De entitlement wordt in de codesignatuur opgenomen als het Apple Developer App ID en provisioningprofiel **Push Notifications** toestaan.
+- Na het inschakelen van **Push Notifications** in Apple Developer moet Xcode mogelijk het provisioningprofiel vernieuwen. Controleer bij een echte iPhone-build met `codesign -d --entitlements :- /pad/naar/Voxie.app` dat `aps-environment` aanwezig is. Ontbreekt deze, dan kan de app niet zelf de signingmachtigingen herstellen.
+- De app toont nu gerichte Nederlandse uitleg voor Apple-foutcodes 2, 3 en 4.
+- De websitehero toont weer de eerdere iPhone/Watch-conceptmockups zonder iPad-overlap. De gele concentrische ringen bewegen rustig; bij gereduceerde beweging blijven ze stil.
+- Let op: een geslaagde kanaalactivatie is nog geen bewijs van werkende achtergrondontvangst. Test daarna met twee echte apparaten en een correcte APNs `sandbox`- of `production`-serverconfiguratie.
 
 ### Build 16 — Push to Talk startvolgorde en welkomstinstructies
 
