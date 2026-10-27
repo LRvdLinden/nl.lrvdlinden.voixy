@@ -342,14 +342,9 @@ Deno.serve(async (req: Request) => {
     const { error } = await db.from("voxie_audio_frames")
       .update({ [key]: true }).eq("recipient", me.id).in("id", ids);
     if (error) return fail(500, "acknowledgement failed");
-    let removal = db.from("voxie_audio_frames").delete()
-      .eq("recipient", me.id).in("id", ids);
-    if (me.delivery_target === "both") {
-      removal = removal.eq("played_watch", true).eq("played_phone", true);
-    } else {
-      removal = removal.eq(key, true);
-    }
-    const { error: deleteError } = await removal;
+    // A single successful playback is enough, including when destination is both.
+    const { error: deleteError } = await db.from("voxie_audio_frames").delete()
+      .eq("recipient", me.id).in("id", ids).eq(key, true);
     if (deleteError) return fail(500, "frame deletion failed");
     return json(200, { ok: true });
   }
