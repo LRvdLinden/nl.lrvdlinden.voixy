@@ -4,10 +4,13 @@ import AVFoundation
 
 @main
 struct VoxiePhoneApp: App {
-    @StateObject private var model = VoxieV2Model()
+    @StateObject private var model: VoxieV2Model
 
     init() {
         // Apple may relaunch us invisibly for a Push to Talk notification.
+        let serviceModel = VoxieV2Model()
+        _model = StateObject(wrappedValue: serviceModel)
+        VoxiePushToTalk.shared.attach(serviceModel)
         VoxiePushToTalk.shared.initialize()
     }
 
