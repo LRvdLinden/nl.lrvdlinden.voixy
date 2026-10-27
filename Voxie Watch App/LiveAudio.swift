@@ -73,7 +73,7 @@ final class LiveAudio {
         capturing = false
     }
 
-    func play(_ pcm: Data) throws {
+    func play(_ pcm: Data, onPlayed: @escaping @Sendable () -> Void) throws {
         guard pcm.count >= 2, pcm.count.isMultiple(of: 2) else { return }
         try prepare()
         let count = pcm.count / 2
@@ -85,7 +85,9 @@ final class LiveAudio {
             guard let source = bytes.bindMemory(to: Int16.self).baseAddress else { return }
             for n in 0..<count { channel[n] = Float(source[n]) / 32768 }
         }
-        player.scheduleBuffer(output, completionHandler: nil)
+        player.scheduleBuffer(output, completionCallbackType: .dataPlayedBack) { _ in
+            onPlayed()
+        }
     }
 }
 
