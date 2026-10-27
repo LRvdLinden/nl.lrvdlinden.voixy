@@ -66,7 +66,16 @@ final class VoxiePushToTalk: NSObject, ObservableObject, PTChannelManagerDelegat
             } catch {
                 initialized = false // A later button press may retry initialization.
                 pendingForegroundJoin = false
-                status = "Push to Talk niet beschikbaar: \(error.localizedDescription)"
+                let nsError = error as NSError
+                if nsError.domain == PTInstantiationErrorDomain && nsError.code == 3 {
+                    status = "Pushmeldingen ontbreken in de ondertekende app. Controleer Push Notifications en vernieuw het provisioningprofiel in Xcode."
+                } else if nsError.domain == PTInstantiationErrorDomain && nsError.code == 4 {
+                    status = "Push to Talk-rechten ontbreken in de ondertekende app. Controleer de Apple Developer App ID en het provisioningprofiel."
+                } else if nsError.domain == PTInstantiationErrorDomain && nsError.code == 2 {
+                    status = "Achtergrondmodus Push to Talk ontbreekt. Zet deze aan bij Signing & Capabilities."
+                } else {
+                    status = "Push to Talk niet beschikbaar (\(nsError.domain), code \(nsError.code)): \(error.localizedDescription)"
+                }
             }
         }
     }
