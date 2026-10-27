@@ -149,6 +149,20 @@ final class VoxieV2Model: ObservableObject {
         selectedFriendID = nil; status = "Log in met Apple"
     }
 
+    func deleteAccount() async -> Bool {
+        guard ready else { return false }
+        do {
+            let request = try makeRequest("/v3/account", method: "DELETE")
+            let (_, response) = try await URLSession.shared.data(for: request)
+            try validate(response)
+            signOut()
+            return true
+        } catch {
+            status = "Account verwijderen: \(error.localizedDescription)"
+            return false
+        }
+    }
+
     func start() {
         guard ready, refreshTask == nil else { return }
         if !available { setAvailable(false) }
@@ -274,6 +288,8 @@ final class VoxieV2Model: ObservableObject {
             pending = result.pending
             invitations = result.invitations
             if let id = selectedFriendID, !friends.contains(where: { $0.id == id }) { selectedFriendID = nil }
+        } catch VoxieError.unauthorized {
+            signOut()
         } catch { status = "Netwerk: \(error.localizedDescription)" }
     }
 
@@ -361,6 +377,9 @@ final class VoxieV2Model: ObservableObject {
     }
 
     private func validate(_ response: URLResponse) throws {
+        if (response as? HTTPURLResponse)?.statusCode == 401 {
+            throw VoxieError.unauthorized
+        }
         guard let response = response as? HTTPURLResponse, (200...299).contains(response.statusCode) else {
             throw VoxieError.server
         }
@@ -369,12 +388,13 @@ final class VoxieV2Model: ObservableObject {
 
 private struct OkReply: Decodable { let ok: Bool }
 private enum VoxieError: LocalizedError {
-    case address, server, usernameTaken, detail(String)
+    case address, server, usernameTaken, unauthorized, detail(String)
     var errorDescription: String? {
         switch self {
         case .address: return "Ongeldig HTTPS-adres"
         case .server: return "Serverfout of niet beschikbaar"
         case .usernameTaken: return "Deze gebruikersnaam bestaat al. Kies een andere."
+        case .unauthorized: return "Je sessie is verlopen. Meld je opnieuw aan."
         case .detail(let message): return message
         }
     }
