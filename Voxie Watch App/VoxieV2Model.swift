@@ -73,6 +73,7 @@ final class VoxieV2Model: ObservableObject {
     private var holding = false
     private var pushToken: String?
     private var maxRecordingTask: Task<Void, Never>?
+    private var sendFailures = 0
 
     init() {
         audio.setPlaybackVolume(Float(playbackVolume))
@@ -341,7 +342,7 @@ final class VoxieV2Model: ObservableObject {
         audio.stopCapture()
         let hadSpeech = isSpeaking
         isSpeaking = false
-        if hadSpeech { status = "Versturen…" }
+        if hadSpeech { status = outgoing.isEmpty ? "Opname verwerken…" : "Versturen…" }
     }
 
     private func refresh() async {
@@ -375,22 +376,33 @@ final class VoxieV2Model: ObservableObject {
             #endif
             let response: FrameReply = try await get("/v2/frames?after=\(cursor)&device=\(device)")
             for frame in response.frames {
-                cursor = max(cursor, frame.id)
-                guard available, !isSpeaking, frame.sender == selectedFriendID,
-                      let data = Data(base64Encoded: frame.pcm) else { continue }
-                let playedID = frame.id
-                try audio.play(data) { [weak self] in
-                    Task { @MainActor [weak self] in
-                        await self?.acknowledgeFrame(playedID, device: device, phase: "played")
-                    }
+                // Incoming audio is independent of the currently selected friend.
+                // Otherwise a user who hasn't opened the sender's chat loses every frame.
+                guard let sender = friends.first(where: { $0.id == frame.sender }),
+                      let data = Data(base64Encoded: frame.pcm) else {
+                    cursor = max(cursor, frame.id)
+                    continue
                 }
+                guard available, !isSpeaking else { break }
+                let playedID = frame.id
+                do {
+                    try audio.play(data) { [weak self] in
+                        Task { @MainActor [weak self] in
+                            await self?.acknowledgeFrame(playedID, device: device, phase: "played")
+                        }
+                    }
+                } catch {
+                    status = "Afspelen mislukt: \(error.localizedDescription)"
+                    break
+                }
+                cursor = max(cursor, frame.id)
                 // Queued in the local audio engine: this device has its copy.
                 Task { [weak self] in
                     await self?.acknowledgeFrame(playedID, device: device, phase: "received")
                 }
-                status = "\(selected?.name ?? "Vriend") praat…"
+                status = "\(sender.name) praat…"
             }
-        } catch { /* transient audio network drop: next poll retries */ }
+        } catch { status = "Ontvangen mislukt: \(error.localizedDescription)" }
     }
 
     private func acknowledgeFrame(_ id: Int, device: String, phase: String) async {
@@ -406,7 +418,7 @@ final class VoxieV2Model: ObservableObject {
 
     private func flushAudio() async {
         // Hold = record locally; release = transmit buffered PCM immediately.
-        guard ready, !isSpeaking, !isSending,
+        guard ready, !holding, !isSpeaking, !isSending,
               let recipient = selectedFriendID, !outgoing.isEmpty else { return }
         isSending = true
         var chunk = Data()
@@ -415,7 +427,9 @@ final class VoxieV2Model: ObservableObject {
             outgoing.removeFirst()
         }
         if chunk.isEmpty, !outgoing.isEmpty {
-            chunk = Data(outgoing.removeFirst().prefix(32768))
+            let large = outgoing.removeFirst()
+            chunk = Data(large.prefix(32768))
+            if large.count > 32768 { outgoing.insert(Data(large.dropFirst(32768)), at: 0) }
         }
         do {
             let request = try makeRequest("/v2/frames/\(recipient)", method: "POST")
@@ -423,8 +437,13 @@ final class VoxieV2Model: ObservableObject {
             upload.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             let (_, response) = try await URLSession.shared.upload(for: upload, from: chunk)
             try validate(response)
+            sendFailures = 0
             if outgoing.isEmpty { status = "Verzonden ✓" }
-        } catch { status = "Audioverbinding verbroken" }
+        } catch {
+            outgoing.insert(chunk, at: 0)
+            sendFailures += 1
+            status = "Audio niet verzonden (poging \(sendFailures)): \(error.localizedDescription)"
+        }
         isSending = false
     }
 
