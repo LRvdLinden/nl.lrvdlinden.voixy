@@ -48,6 +48,20 @@ struct VoxiePhoneHomeView: View {
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showFriends) { PhoneFriendsSheet() }
         .sheet(isPresented: $showSettings) { PhoneSettingsSheet() }
+        .confirmationDialog("Vriendschapsverzoek sturen?",
+                            isPresented: Binding(
+                                get: { model.ready && model.hasLoadedProfile && !model.username.isEmpty && model.pendingProfileUsername != nil },
+                                set: { if !$0 { model.pendingProfileUsername = nil } }
+                            ), titleVisibility: .visible) {
+            Button("Verstuur vriendschapsverzoek") {
+                guard let handle = model.pendingProfileUsername else { return }
+                model.pendingProfileUsername = nil
+                Task { await model.invite(username: handle) }
+            }
+            Button("Annuleren", role: .cancel) { model.pendingProfileUsername = nil }
+        } message: {
+            Text("Wil je @\(model.pendingProfileUsername ?? "deze persoon") uitnodigen als vriend op Voxie? Deze persoon moet je verzoek daarna nog accepteren.")
+        }
         .sheet(isPresented: $showTalk) {
             NavigationStack {
                 ScrollView {
@@ -148,6 +162,13 @@ struct VoxiePhoneHomeView: View {
                 Text(model.username.isEmpty ? "Nog geen naam" : "@\(model.username)")
                     .font(.system(size: 20, weight: .black, design: .monospaced))
                     .foregroundStyle(Palette.yellow)
+                if !model.username.isEmpty {
+                    ShareLink(item: URL(string: "https://voxie.online/u/\(model.username)")!) {
+                        Label("Deel je profiel", systemImage: "square.and.arrow.up")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .tint(Palette.yellow)
+                }
             }
             Spacer()
             Toggle("Beschikbaar", isOn: Binding(
@@ -677,7 +698,9 @@ private struct PhoneFriendsSheet: View {
                         .font(.system(.title3, design: .monospaced, weight: .bold))
                         .foregroundStyle(Palette.yellow)
                     if !model.username.isEmpty {
-                        ShareLink(item: "@\(model.username)") { Label("Deel gebruikersnaam", systemImage: "square.and.arrow.up") }
+                        ShareLink(item: URL(string: "https://voxie.online/u/\(model.username)")!) {
+                            Label("Deel profiellink", systemImage: "square.and.arrow.up")
+                        }
                     }
                 }
                 Section("Vriend uitnodigen") {
