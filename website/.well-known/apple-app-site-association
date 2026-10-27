@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["EU3UY476T6.nl.lrvdlinden.Voxie"],
+        "components": [
+          {"/": "/u/*", "comment": "Open Voxie shared user profiles"}
+        ]
+      }
+    ]
+  }
+}
