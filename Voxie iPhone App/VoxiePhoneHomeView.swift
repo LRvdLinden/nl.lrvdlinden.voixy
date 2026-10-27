@@ -146,8 +146,7 @@ struct VoxiePhoneHomeView: View {
     private var header: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("VOXIE")
-                    .tracking(3)
+                (Text("voxie").foregroundColor(.white) + Text(".").foregroundColor(Palette.yellow))
                     .font(.system(size: 26, weight: .black, design: .rounded))
                 Text("WALKIETALKIE")
                     .tracking(2)
@@ -424,10 +423,8 @@ private struct PhoneOnboardingFlow: View {
     var body: some View {
         VStack(spacing: 18) {
             if step != 2 {
-                Text("VOXIE")
+                (Text("voxie").foregroundColor(.white) + Text(".").foregroundColor(Palette.yellow))
                     .font(.system(size: 30, weight: .black, design: .rounded))
-                    .tracking(3)
-                    .foregroundStyle(Palette.yellow)
                     .padding(.top, 25)
             }
             Group {
