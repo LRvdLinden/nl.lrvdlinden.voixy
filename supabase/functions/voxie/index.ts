@@ -69,7 +69,8 @@ async function friendship(a: string, b: string) {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204 });
   const url = new URL(req.url);
-  // Supabase forwards /voxie/v3/...; normalize both API versions.
+  // Supabase forwards paths as /voxie/v3/... (or /functions/v1/voxie/v3/...).
+  // Normalize both API versions to the routes used below.
   const match = url.pathname.match(/\/(v[23]\/[^?#]*)$/);
   const path = match ? `/${match[1]}`
     : url.pathname.endsWith("/health") ? "/health" : url.pathname;
@@ -127,7 +128,8 @@ Deno.serve(async (req: Request) => {
         .insert({ token_hash: await sha256(token), user_id: user.id });
       return sessionError ? fail(500, "session failed") :
         json(200, { id: user.id, token, code: user.invite_code,
-          username: user.username, avatar: user.avatar_base64 });
+          username: user.username, avatar: user.avatar_base64,
+          deliveryTarget: user.delivery_target ?? "both" });
     } catch { return fail(401, "Apple sign-in failed"); }
   }
 
@@ -169,12 +171,18 @@ Deno.serve(async (req: Request) => {
           !/^[a-zA-Z0-9+/]*={0,2}$/.test(avatar))) return fail(400, "invalid avatar");
       change.avatar_base64 = avatar;
     }
+    if ("deliveryTarget" in input) {
+      if (!["watch", "phone", "both"].includes(input.deliveryTarget))
+        return fail(400, "invalid delivery target");
+      change.delivery_target = input.deliveryTarget;
+    }
     if (!Object.keys(change).length) return fail(400, "empty profile");
     const { data, error } = await db.from("voxie_users").update(change).eq("id", me.id)
-      .select("username,avatar_base64").single();
+      .select("username,avatar_base64,delivery_target").single();
     if (error?.code === "23505") return fail(409, "username taken");
     if (error || !data) return fail(500, "profile update failed");
-    return json(200, { ok: true, username: data.username, avatar: data.avatar_base64 });
+    return json(200, { ok: true, username: data.username, avatar: data.avatar_base64,
+      deliveryTarget: data.delivery_target });
   }
 
   if (req.method === "POST" && path === "/v3/invite") {
@@ -235,7 +243,7 @@ Deno.serve(async (req: Request) => {
       pending = (data ?? []).map(x => ({ id: x.id, name: x.username ?? x.display_name }));
     }
     return json(200, { id: me.id, code: me.invite_code, username: me.username,
-      avatar: me.avatar_base64, friends, pending,
+      avatar: me.avatar_base64, deliveryTarget: me.delivery_target ?? "both", friends, pending,
       invitations: (invites ?? []).map(x => ({ id: x.id, name: names.get(x.sender) || "Vriend" })) });
   }
 
@@ -286,6 +294,10 @@ Deno.serve(async (req: Request) => {
   }
 
   if (req.method === "GET" && path === "/v2/frames") {
+    const device = url.searchParams.get("device");
+    if (device && device !== "watch" && device !== "phone") return fail(400, "invalid device");
+    if (device && me.delivery_target && me.delivery_target !== "both" && me.delivery_target !== device)
+      return json(200, { frames: [] });
     const after = Math.max(0, Number(url.searchParams.get("after") ?? "0"));
     if (!Number.isSafeInteger(after)) return fail(400, "invalid cursor");
     await db.from("voxie_users").update({ last_poll: new Date().toISOString() }).eq("id", me.id);
