@@ -286,15 +286,19 @@ Deno.serve(async (req: Request) => {
       .eq("id", Number(invitation[1])).eq("recipient", me.id).eq("status", "pending").maybeSingle();
     if (!invite) return fail(404, "invitation missing");
     const accepted = invitation[2] === "accept";
-    const { error } = await db.from("voxie_invitations").update({ status: accepted ? "accepted" : "declined" })
-      .eq("id", invite.id).eq("recipient", me.id).eq("status", "pending");
-    if (error) return fail(500, "update failed");
     if (accepted) {
       const [user_a, user_b] = [invite.sender, invite.recipient].sort();
       const { error: friendError } = await db.from("voxie_friends").upsert({ user_a, user_b },
         { onConflict: "user_a,user_b" });
       if (friendError) return fail(500, "friendship failed");
     }
+    // Do not consume an invitation until the friendship is persisted.
+    // Otherwise a transient database error leaves an accepted invitation
+    // with no friendship and no way for the user to retry.
+    const { error } = await db.from("voxie_invitations")
+      .update({ status: accepted ? "accepted" : "declined" })
+      .eq("id", invite.id).eq("recipient", me.id).eq("status", "pending");
+    if (error) return fail(500, "update failed");
     return json(200, { ok: true });
   }
 
