@@ -68,19 +68,22 @@ struct VoxieHomeView: View {
                 }
 
                 if let selected = model.selected {
+                    Text(selected.name.uppercased())
+                        .font(.system(size: 15, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                    TalkPad()
                     Button {
                         model.endSpeaking()
                         model.selectedFriendID = nil
                     } label: {
-                        Label("Terug", systemImage: "chevron.left")
-                            .font(.caption)
+                        Label("Terug naar vrienden", systemImage: "chevron.left")
+                            .font(.system(size: 11, weight: .semibold))
+                            .frame(maxWidth: .infinity)
                     }
+                    .buttonStyle(.bordered)
                     .tint(voxieYellow)
-                    Text("PRATEN MET \(selected.name.uppercased())")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(voxieYellow)
-                        .multilineTextAlignment(.center)
-                    TalkPad()
+                    .accessibilityHint("Onder de gele praatknop")
                 } else if model.friends.isEmpty {
                     Text("Veeg omhoog en nodig een vriend uit")
                         .font(.caption)
@@ -124,12 +127,14 @@ struct VoxieHomeView: View {
                     .foregroundStyle(.gray)
                   }
                 }
-                Text(model.status)
-                    .font(.system(size: 10))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.gray)
+                if model.selected == nil || model.status.contains("mislukt") || model.status.contains("fout") {
+                    Text(model.status)
+                        .font(.system(size: 10))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.gray)
+                }
             }
-            .padding(10)
+            .padding(8)
         }
         .background(.black)
     }
@@ -198,19 +203,20 @@ private struct TalkPad: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(voxieYellow.opacity(0.3), lineWidth: 2)
-                .frame(width: 122, height: 122)
-            Circle().fill(holding ? voxieYellow.opacity(0.75) : voxieYellow)
-                .frame(width: 110, height: 110)
-            VStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 28)
+                .fill(holding ? voxieYellow.opacity(0.82) : voxieYellow)
+            VStack(spacing: 10) {
                 Image(systemName: holding ? "waveform" : "mic.fill")
-                    .font(.system(size: 29, weight: .bold))
-                Text(holding ? "OPNEMEN" : "HOUD VAST")
-                    .font(.system(size: 10, weight: .black))
+                    .font(.system(size: 37, weight: .heavy))
+                Text(holding ? "PRATEN…" : "HOUD VAST\nOM TE PRATEN")
+                    .font(.system(size: 13, weight: .black, design: .rounded))
+                    .multilineTextAlignment(.center)
             }
             .foregroundStyle(.black)
         }
-        .contentShape(Circle())
+        .frame(height: 104)
+        .frame(maxWidth: .infinity)
+        .contentShape(RoundedRectangle(cornerRadius: 28))
         .gesture(DragGesture(minimumDistance: 0)
             .onChanged { _ in
                 guard !holding else { return }
