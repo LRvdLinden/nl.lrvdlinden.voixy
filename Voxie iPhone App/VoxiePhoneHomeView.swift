@@ -73,6 +73,10 @@ struct VoxiePhoneHomeView: View {
         }
         .onChange(of: model.hasLoadedProfile) { _, loaded in
             if loaded && model.username.isEmpty { onboardingActive = true }
+            if loaded && !model.username.isEmpty && onboardingActive && onboardingStep <= 3 {
+                // Existing Apple account on a newly installed device: setup already done.
+                onboardingActive = false
+            }
             if loaded && !model.username.isEmpty && !onboardingActive { synchronizeWatch() }
         }
         .onChange(of: model.ready) { _, ready in
