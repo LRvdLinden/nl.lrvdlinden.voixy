@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Voxie">
+  <rect width="512" height="512" rx="118" fill="#ffd900"/>
+  <g stroke="#111" stroke-width="31" stroke-linecap="round">
+    <path d="M256 115v282"/>
+    <path d="M184 167v178"/>
+    <path d="M328 167v178"/>
+    <path d="M113 218v76"/>
+    <path d="M399 218v76"/>
+  </g>
+</svg>
