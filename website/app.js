@@ -21,7 +21,7 @@
   copy.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(url);
-      copy.textContent = 'Link gekopieerd ✓';
+      copy.textContent = 'Link gekopieerd';
     } catch {
       copy.textContent = url;
     }
