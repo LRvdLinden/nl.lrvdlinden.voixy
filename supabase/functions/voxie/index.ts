@@ -320,7 +320,7 @@ Deno.serve(async (req: Request) => {
     const after = Math.max(0, Number(url.searchParams.get("after") ?? "0"));
     if (!Number.isSafeInteger(after)) return fail(400, "invalid cursor");
     await db.from("voxie_users").update({ last_poll: new Date().toISOString() }).eq("id", me.id);
-    const cutoff = new Date(Date.now() - 15_000).toISOString();
+    const cutoff = new Date(Date.now() - 30_000).toISOString();
     // Opportunistically purge stale frames (including previous app versions).
     await db.from("voxie_audio_frames").delete().lt("created_at", cutoff);
     const { data, error } = await db.from("voxie_audio_frames")
@@ -334,17 +334,29 @@ Deno.serve(async (req: Request) => {
     const input = await bodyJSON(req, 2048);
     const ids: unknown = input?.ids;
     const device = input?.device;
+    const phase = input?.phase;
     if (!Array.isArray(ids) || ids.length < 1 || ids.length > 50 ||
         !ids.every((id: unknown) => Number.isSafeInteger(id) && Number(id) > 0) ||
-        (device !== "phone" && device !== "watch"))
+        (device !== "phone" && device !== "watch") ||
+        (phase !== "received" && phase !== "played"))
       return fail(400, "invalid playback acknowledgement");
-    const key = device === "watch" ? "played_watch" : "played_phone";
+    if (me.delivery_target !== "both" && me.delivery_target !== device)
+      return fail(403, "wrong playback device");
+    const key = `${phase}_${device}`;
     const { error } = await db.from("voxie_audio_frames")
       .update({ [key]: true }).eq("recipient", me.id).in("id", ids);
     if (error) return fail(500, "acknowledgement failed");
-    // A single successful playback is enough, including when destination is both.
-    const { error: deleteError } = await db.from("voxie_audio_frames").delete()
-      .eq("recipient", me.id).in("id", ids).eq(key, true);
+    // In 'both' mode, both apps must have safely queued the audio and one must
+    // finish playback. A late/offline device is capped by the 30-second expiry.
+    let removal = db.from("voxie_audio_frames").delete()
+      .eq("recipient", me.id).in("id", ids);
+    if (me.delivery_target === "both") {
+      removal = removal.eq("received_phone", true).eq("received_watch", true)
+        .or("played_phone.eq.true,played_watch.eq.true");
+    } else {
+      removal = removal.eq(`played_${device}`, true);
+    }
+    const { error: deleteError } = await removal;
     if (deleteError) return fail(500, "frame deletion failed");
     return json(200, { ok: true });
   }
