@@ -19,6 +19,11 @@ struct VoxiePhoneHomeView: View {
             Color.black.ignoresSafeArea()
             if !model.ready {
                 VoxieSignInView()
+            } else if !model.hasLoadedProfile {
+                ProgressView("Profiel laden…")
+                    .tint(Palette.yellow)
+            } else if model.username.isEmpty {
+                PhoneSettingsSheet(onboarding: true)
             } else {
               ScrollView {
                 VStack(spacing: 20) {
@@ -44,15 +49,7 @@ struct VoxiePhoneHomeView: View {
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showFriends) { PhoneFriendsSheet() }
         .sheet(isPresented: $showSettings) { PhoneSettingsSheet() }
-        .onAppear {
-            if model.ready {
-                model.start()
-                if model.username.isEmpty { showSettings = true }
-            }
-        }
-        .onChange(of: model.ready) { _, ready in
-            if ready && model.username.isEmpty { showSettings = true }
-        }
+        .onAppear { if model.ready { model.start() } }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active: model.start()
@@ -67,19 +64,12 @@ struct VoxiePhoneHomeView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Group {
-                if let avatar = model.avatarBase64,
-                   let imageData = Data(base64Encoded: avatar),
-                   let uiImage = UIImage(data: imageData) {
-                    Image(uiImage: uiImage).resizable().scaledToFill()
-                } else {
-                    Image(systemName: "waveform.path")
-                        .font(.title3.weight(.black))
-                        .foregroundStyle(.black)
-                }
-            }
+            Image(systemName: "waveform")
+                .font(.system(size: 25, weight: .black))
+                .foregroundStyle(.black)
                 .frame(width: 50, height: 50)
                 .background(Palette.yellow, in: RoundedRectangle(cornerRadius: 15))
+                .accessibilityLabel("Voxie-logo")
             VStack(alignment: .leading, spacing: 2) {
                 Text("VOXIE")
                     .tracking(3)
@@ -103,6 +93,14 @@ struct VoxiePhoneHomeView: View {
 
     private var profileCard: some View {
         HStack {
+            if let avatar = model.avatarBase64,
+               let data = Data(base64Encoded: avatar),
+               let picture = UIImage(data: data) {
+                Image(uiImage: picture)
+                    .resizable().scaledToFill()
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+            }
             VStack(alignment: .leading, spacing: 6) {
                 Text("JOUW GEBRUIKERSNAAM")
                     .font(.caption2.weight(.bold))
@@ -231,14 +229,24 @@ struct VoxiePhoneHomeView: View {
 private struct PhoneSettingsSheet: View {
     @EnvironmentObject private var model: VoxieV2Model
     @Environment(\.dismiss) private var dismiss
+    var onboarding = false
     @State private var handle = ""
     @State private var photo: PhotosPickerItem?
     @State private var isSaving = false
     @State private var feedback = ""
+    @State private var savingDelivery = false
 
     var body: some View {
         NavigationStack {
             Form {
+                if onboarding {
+                    Section {
+                        Label("Welkom bij Voxie", systemImage: "waveform")
+                            .font(.title3.weight(.bold))
+                            .foregroundStyle(Palette.yellow)
+                        Text("Stel Voxie één keer in op je iPhone of iPad. Kies een unieke gebruikersnaam om vrienden te kunnen uitnodigen.")
+                    }
+                }
                 Section("Jouw profiel") {
                     TextField("Unieke gebruikersnaam", text: $handle)
                         .textContentType(.nickname)
@@ -267,14 +275,41 @@ private struct PhoneSettingsSheet: View {
                     }
                     .tint(Palette.yellow)
                 }
+                Section("Berichten ontvangen op") {
+                    Picker("Ontvangst", selection: Binding(
+                        get: { model.deliveryTarget },
+                        set: { choice in
+                            savingDelivery = true
+                            Task {
+                                let saved = await model.updateDeliveryTarget(choice)
+                                feedback = saved ? "Ontvangst opgeslagen ✓" : model.status
+                                savingDelivery = false
+                            }
+                        }
+                    )) {
+                        Text("Alleen Apple Watch").tag("watch")
+                        Text("Alleen iPhone/iPad").tag("phone")
+                        Text("Beide apparaten").tag("both")
+                    }
+                    .disabled(savingDelivery)
+                    Text("Bepaalt waar inkomende spraak wordt afgespeeld zolang Voxie actief is.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 Section {
                     Text("Je vrienden en profiel worden via je Apple-account op iPhone, iPad en Apple Watch gesynchroniseerd. De Watch heeft geen aparte profielinstellingen.")
                         .font(.footnote)
                 }
                 Section { Button("Log uit", role: .destructive) { model.signOut(); dismiss() } }
             }
-            .navigationTitle("Instellingen")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Gereed") { dismiss() } } }
+            .navigationTitle(onboarding ? "Voxie instellen" : "Instellingen")
+            .toolbar {
+                if !onboarding {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Gereed") { dismiss() }
+                    }
+                }
+            }
             .onAppear { handle = model.username }
             .onChange(of: photo) { _, item in
                 Task {
