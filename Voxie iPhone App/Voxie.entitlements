@@ -5,4 +5,5 @@
   <array><string>Default</string></array>
   <key>com.apple.developer.associated-domains</key>
   <array><string>applinks:voxie.online</string></array>
+  <key>com.apple.developer.push-to-talk</key><true/>
 </dict></plist>

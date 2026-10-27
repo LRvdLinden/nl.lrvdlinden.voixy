@@ -74,6 +74,7 @@ final class VoxieV2Model: ObservableObject {
     private var pushToken: String?
     private var maxRecordingTask: Task<Void, Never>?
     private var sendFailures = 0
+    private var notifyOnNextFrame = false
 
     init() {
         audio.setPlaybackVolume(Float(playbackVolume))
@@ -278,6 +279,39 @@ final class VoxieV2Model: ObservableObject {
         } catch { /* notification support is optional; foreground calling still works */ }
     }
 
+    #if os(iOS)
+    func registerPushToTalkToken(_ tokenData: Data, channelID: UUID) async {
+        guard ready, !username.isEmpty else { return }
+        let hex = tokenData.map { String(format: "%02x", $0) }.joined()
+        do {
+            let _: OkReply = try await sendJSONObject("/v3/ptt-token", value: [
+                "token": hex, "channelUUID": channelID.uuidString.lowercased()
+            ])
+        } catch { status = "Achtergrondontvangst: \(error.localizedDescription)" }
+    }
+
+    func clearPushToTalkToken() async {
+        guard ready else { return }
+        do {
+            let (_, response) = try await URLSession.shared.data(for: makeRequest("/v3/ptt-token", method: "DELETE"))
+            try validate(response)
+        } catch { /* Token will also expire when the system leaves the channel. */ }
+    }
+
+    func receivePushToTalkAudio() async {
+        guard ready, available, deliveryTarget != "watch" else { return }
+        if friends.isEmpty { await refresh() }
+        // PushToTalk activates the audio session; fetch quickly within its wake window.
+        for _ in 0..<76 {
+            if Task.isCancelled { return }
+            await receiveFrames()
+            try? await Task.sleep(for: .milliseconds(350))
+        }
+    }
+
+    func pttAudioSession(active: Bool) { audio.setPushToTalkAudioActive(active) }
+    #endif
+
     @discardableResult
     func respond(invitation: Int, accept: Bool) async -> Bool {
         do {
@@ -344,7 +378,10 @@ final class VoxieV2Model: ObservableObject {
         audio.stopCapture()
         let hadSpeech = isSpeaking
         isSpeaking = false
-        if hadSpeech { status = outgoing.isEmpty ? "Opname verwerken…" : "Versturen…" }
+        if hadSpeech {
+            notifyOnNextFrame = true
+            status = outgoing.isEmpty ? "Opname verwerken…" : "Versturen…"
+        }
     }
 
     private func refresh() async {
@@ -438,11 +475,12 @@ final class VoxieV2Model: ObservableObject {
             if large.count > 32768 { outgoing.insert(Data(large.dropFirst(32768)), at: 0) }
         }
         do {
-            let request = try makeRequest("/v2/frames/\(recipient)", method: "POST")
+            let request = try makeRequest("/v2/frames/\(recipient)" + (notifyOnNextFrame ? "?begin=1" : ""), method: "POST")
             var upload = request
             upload.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             let (_, response) = try await URLSession.shared.upload(for: upload, from: chunk)
             try validate(response)
+            notifyOnNextFrame = false
             sendFailures = 0
             if outgoing.isEmpty { status = "Verzonden ✓" }
         } catch {

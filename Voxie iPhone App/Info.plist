@@ -19,6 +19,7 @@
     </dict></array>
     <key>LSApplicationCategoryType</key><string>public.app-category.social-networking</string>
     <key>NSMicrophoneUsageDescription</key><string>Voxie gebruikt de microfoon voor gesproken berichten aan vrienden.</string>
+    <key>UIBackgroundModes</key><array><string>push-to-talk</string></array>
     <key>UILaunchScreen</key><dict/>
     <key>UISupportedInterfaceOrientations</key>
     <array>

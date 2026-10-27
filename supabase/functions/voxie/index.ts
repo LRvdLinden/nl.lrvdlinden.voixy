@@ -2,7 +2,7 @@
 // Deploy with `supabase functions deploy voxie --no-verify-jwt`.
 // All privileged access stays here; never embed Supabase secret keys in watchOS.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { createRemoteJWKSet, jwtVerify } from "npm:jose@5";
+import { createRemoteJWKSet, jwtVerify, SignJWT, importPKCS8 } from "npm:jose@5";
 
 const projectURL = Deno.env.get("SUPABASE_URL")!;
 const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || (() => {
@@ -16,6 +16,13 @@ if (!secret) throw new Error("Configure Supabase secret key for Edge Functions")
 const db = createClient(projectURL, secret, { auth: { persistSession: false } });
 const appleKeys = createRemoteJWKSet(new URL("https://appleid.apple.com/auth/keys"));
 const appleAudiences = ["nl.lrvdlinden.Voxie", "nl.lrvdlinden.Voxie.watchkitapp"];
+const apnsKeyID = Deno.env.get("APNS_KEY_ID") ?? "";
+const apnsTeamID = Deno.env.get("APNS_TEAM_ID") ?? "";
+const apnsPrivateKey = (Deno.env.get("APNS_AUTH_KEY_P8") ?? "").replace(/\\n/g, "\n");
+const apnsHost = Deno.env.get("APNS_ENVIRONMENT") === "sandbox"
+  ? "https://api.sandbox.push.apple.com" : "https://api.push.apple.com";
+let apnsSigningKey: Awaited<ReturnType<typeof importPKCS8>> | null = null;
+let apnsBearer: { value: string; expires: number } | null = null;
 const encoder = new TextEncoder();
 const cors = { "content-type": "application/json", "cache-control": "no-store" };
 const json = (status: number, value: unknown) => new Response(JSON.stringify(value), { status, headers: cors });
@@ -64,6 +71,36 @@ async function friendship(a: string, b: string) {
   const { data } = await db.from("voxie_friends").select("user_a")
     .eq("user_a", user_a).eq("user_b", user_b).maybeSingle();
   return Boolean(data);
+}
+
+async function notifyPushToTalk(userID: string, speaker: string) {
+  // Missing Apple credentials must not prevent foreground audio delivery.
+  if (!apnsKeyID || !apnsTeamID || !apnsPrivateKey) return;
+  const { data: channel } = await db.from("voxie_ptt_channels")
+    .select("token").eq("user_id", userID).maybeSingle();
+  if (!channel?.token) return;
+  if (!apnsSigningKey) apnsSigningKey = await importPKCS8(apnsPrivateKey, "ES256");
+  if (!apnsBearer || apnsBearer.expires <= Date.now()) {
+    const value = await new SignJWT({}).setProtectedHeader({ alg: "ES256", kid: apnsKeyID })
+      .setIssuer(apnsTeamID).setIssuedAt().sign(apnsSigningKey);
+    apnsBearer = { value, expires: Date.now() + 45 * 60_000 };
+  }
+  const response = await fetch(`${apnsHost}/3/device/${channel.token}`, {
+    method: "POST",
+    headers: {
+      authorization: `bearer ${apnsBearer.value}`,
+      "apns-topic": "nl.lrvdlinden.Voxie.voip-ptt",
+      "apns-push-type": "pushtotalk", "apns-priority": "10", "apns-expiration": "0",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ activeSpeaker: speaker.slice(0, 60) }),
+    signal: AbortSignal.timeout(2500)
+  });
+  if (!response.ok) {
+    // Stale push token should not remain in circulation indefinitely.
+    if (response.status === 410) await db.from("voxie_ptt_channels").delete().eq("user_id", userID);
+    console.error("PTT APNs delivery failed", response.status);
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -316,6 +353,23 @@ Deno.serve(async (req: Request) => {
     return error ? fail(500, "update failed") : json(200, { ok: true });
   }
 
+  if (req.method === "POST" && path === "/v3/ptt-token") {
+    const input = await bodyJSON(req, 1024);
+    if (!/^[0-9a-f]{32,512}$/.test(input?.token ?? "") ||
+        !/^[0-9a-f-]{36}$/.test(input?.channelUUID ?? ""))
+      return fail(400, "invalid Push to Talk token");
+    const { error } = await db.from("voxie_ptt_channels").upsert({
+      user_id: me.id, token: input.token, channel_uuid: input.channelUUID,
+      updated_at: new Date().toISOString()
+    });
+    return error ? fail(500, "Push to Talk registration failed") : json(200, { ok: true });
+  }
+
+  if (req.method === "DELETE" && path === "/v3/ptt-token") {
+    const { error } = await db.from("voxie_ptt_channels").delete().eq("user_id", me.id);
+    return error ? fail(500, "Push to Talk removal failed") : json(200, { ok: true });
+  }
+
   if (req.method === "GET" && path === "/v2/frames") {
     const device = url.searchParams.get("device");
     if (device && device !== "watch" && device !== "phone") return fail(400, "invalid device");
@@ -370,14 +424,22 @@ Deno.serve(async (req: Request) => {
     if (req.headers.get("content-type") !== "application/octet-stream") return fail(415, "expected PCM16");
     const targetID = frame[1];
     if (!await friendship(me.id, targetID) || !me.available) return fail(403, "not available");
-    const { data: target } = await db.from("voxie_users").select("available")
+    const { data: target } = await db.from("voxie_users").select("available,delivery_target")
       .eq("id", targetID).maybeSingle();
     if (!target?.available) return fail(403, "friend unavailable");
     const pcm = new Uint8Array(await req.arrayBuffer());
     if (pcm.length < 2 || pcm.length > 32768 || pcm.length % 2) return fail(413, "invalid audio frame");
     const { error } = await db.from("voxie_audio_frames")
       .insert({ sender: me.id, recipient: targetID, pcm_base64: decodeAudio(pcm) });
-    return error ? fail(500, "audio upload failed") : json(201, { ok: true });
+    if (error) return fail(500, "audio upload failed");
+    if (url.searchParams.get("begin") === "1" && target.delivery_target !== "watch") {
+      try {
+        await notifyPushToTalk(targetID, me.username || me.display_name || "Voxie-vriend");
+      } catch (pushError) {
+        console.error("PTT APNs request error", String(pushError));
+      }
+    }
+    return json(201, { ok: true });
   }
   return fail(404, "unknown path");
 });

@@ -653,6 +653,7 @@ private struct PhoneOnboardingFlow: View {
 
 private struct PhoneSettingsSheet: View {
     @EnvironmentObject private var model: VoxieV2Model
+    @ObservedObject private var ptt = VoxiePushToTalk.shared
     @Environment(\.dismiss) private var dismiss
     var onboarding = false
     var onSetupComplete: () -> Void = {}
@@ -723,6 +724,14 @@ private struct PhoneSettingsSheet: View {
                     Text("Bepaalt waar inkomende spraak wordt afgespeeld zolang Voxie actief is.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                }
+                Section("Ontvangst wanneer de app gesloten is") {
+                    Text(ptt.status).font(.footnote).foregroundStyle(.secondary)
+                    Button("Activeer Push to Talk") { ptt.join() }
+                        .disabled(!model.ready || model.username.isEmpty)
+                    Button("Deactiveer achtergrondontvangst", role: .destructive) { ptt.leave() }
+                    Text("Activeer dit eenmalig op iPhone of iPad. Apple kan Voxie dan op de achtergrond wekken. Op Apple Watch werkt spraakontvangst vooralsnog terwijl de app geopend is.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Geluidsvolume") {
                     HStack {

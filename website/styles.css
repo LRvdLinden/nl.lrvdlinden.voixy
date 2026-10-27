@@ -55,3 +55,11 @@
 .watch-talk i:nth-child(3){height:48px}
 .art-caption{font-size:9px;letter-spacing:2px;color:#9d9d9d}
 @media(prefers-reduced-motion:no-preference){.button,.nav-button{transition:transform .2s ease,background .2s ease}.live-indicator{animation:pulse 2.5s infinite}@keyframes pulse{50%{box-shadow:0 0 0 9px #ffd90009}}}
+
+/* Device silhouettes: aluminum rim, iPhone action/volume buttons and watch crown. */
+.nav-actions{display:flex;align-items:center;gap:14px}.language-switch{background:transparent;color:var(--yellow);border:1px solid #555;border-radius:999px;font-size:12px;font-weight:800;padding:12px 14px;letter-spacing:.1em}
+.phone-device{border-color:#4a4a4f;box-shadow:0 50px 90px #000c,inset 0 0 0 2px #8886,0 0 0 1px #96969b}
+.phone-device::after{content:"";position:absolute;left:-10px;top:126px;width:3px;height:73px;border-radius:3px;background:linear-gradient(#aaa,#525257,#aaa);box-shadow:0 90px 0 #888;pointer-events:none}
+.watch-body{border-color:#55565b;box-shadow:inset 0 0 0 2px #9b9ba0,0 0 0 2px #222}
+.watch-body::after{width:13px;right:-19px;background:repeating-linear-gradient(0deg,#69696d 0 2px,#99999b 2px 3px)}
+@media(max-width:430px){.nav-actions{gap:7px}.language-switch{padding:10px}.nav-button{font-size:10px;padding:10px 9px;white-space:nowrap}}

@@ -11,7 +11,7 @@ Geel-zwarte iPhone- en Apple Watch-app. Houd de gele knop ingedrukt om maximaal 
 | Widget/Control Bundle ID | `nl.lrvdlinden.Voxie.watchkitapp.control` |
 | Development Team | `EU3UY476T6` |
 | Marketingversie | `1.0.0` |
-| Build | `1` |
+| Build | `15` |
 | Type | iPhone-companion met zelfstandig werkende Watch-app |
 | Backend | Supabase Edge Function |
 
@@ -33,6 +33,16 @@ Wanneer de eerste migratie al handmatig is uitgevoerd en niet in Supabase's migr
 De server controleert Apple ID-tokens met Apple's ondertekende sleutelset en gebruikt korte, eenmalige login-challenges. Hij bewaart een unieke, niet-hoofdlettergevoelige gebruikersnaam, de gekozen avatar en een vriendenlijst per Apple-account. Na Apple-aanmelding op de iPhone ontvangt de gekoppelde Watch een eigen sessie via WatchConnectivity. Audioframes worden na 30 seconden niet meer opgehaald. Voor publieke lancering zijn aanvullende beveiligingsmaatregelen nodig, zoals rate limiting, sessie-intrekking, quotas, opschoning en een privacybeleid. Audio is HTTPS-versleuteld, maar niet end-to-end-versleuteld.
 
 ## Xcode
+
+### Build 15 — iPhone/iPad Push to Talk en NL/EN website
+
+- Op iPhone/iPad staat onder **Instellingen → Ontvangst wanneer de app gesloten is → Activeer Push to Talk** een expliciete Apple-kanaalactivatie. Het systeem kan de app daarna op de achtergrond starten voor een Push to Talk-bericht. iOS brengt de app niet automatisch zichtbaar naar de voorgrond. Apple Watch heeft hiervoor geen overeenkomstige iOS Push to Talk-capability; daar blijft de app voor ontvangst geopend.
+- Onder **Signing & Capabilities** van het **iOS-target** moeten **Push to Talk**, **Background Modes → Push to Talk** en **Push Notifications** worden geactiveerd. Het Apple Developer App ID/provisioning profile moet deze capabilities ook toestaan. Zonder profiel kan Xcode een signingfout geven.
+- Maak op [Apple Developer Keys](https://developer.apple.com/account/resources/authkeys/list) een APNs-geschikte Auth Key aan (download `.p8` eenmalig). Maak de GitHub Actions Secrets `APNS_AUTH_KEY_P8` (volledige inhoud van de `.p8`, inclusief BEGIN/END-regels), `APNS_KEY_ID` (de Apple Key ID) en `APNS_TEAM_ID` (`EU3UY476T6`). Workflow `Deploy Voxie backend` plaatst ze veilig in de Edge Function-secrets; geen private key komt in de app terecht.
+- Standaard gebruikt de server productie-APNs (TestFlight/App Store). Voor rechtstreeks vanuit Xcode geïnstalleerde ontwikkelbuilds: zet de GitHub repositoryvariabele `APNS_ENVIRONMENT=sandbox` en herstart de backendworkflow. Zet vóór TestFlight terug op `production`. Bouw niet alleen op basis van configuratie aannames: test kanaalregistratie en achtergrondwekken op twee fysieke apparaten.
+- De server bewaart per account uitsluitend de tijdelijke Push to Talk-token, niet de Apple private key. De eerste audio-upload van een spraakbericht triggert een `pushtotalk`-APNs-melding. Audioframes blijven maximaal 30 seconden beschikbaar volgens het bestaande afspeelbeleid.
+- Website: NL als apparaatlocale `nl-NL` is, anders EN, met handmatige NL/EN-schakelaar. Beide fictieve schermen zijn in herkenbare iPhone- en Apple Watch-toestellen weergegeven. Het websitelogo blijft hetzelfde; uitsluitend de appiconen zijn nu geel met zwarte geluidsstrepen.
+
 
 1. Open `Voxie.xcodeproj` op je Mac met Xcode 27 en selecteer je Development Team.
 2. Activeer onder **Signing & Capabilities** de capability **Sign in with Apple** voor de iPhone-target. De entitlements zijn aan het project gekoppeld; controleer de Apple Developer App IDs/provisioning profiles. De Watch krijgt zijn sessie via WatchConnectivity en heeft geen Apple-aanmeldscherm. Activeer eventueel **Push Notifications** voor APNs.
