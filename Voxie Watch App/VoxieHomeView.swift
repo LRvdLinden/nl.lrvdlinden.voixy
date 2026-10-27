@@ -9,6 +9,23 @@ struct VoxieHomeView: View {
         Group {
             if !model.ready {
                 VoxieSignInView()
+            } else if !model.hasLoadedProfile {
+                ProgressView("Profiel laden…")
+                    .tint(voxieYellow)
+            } else if model.username.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "iphone.gen3")
+                        .font(.system(size: 34))
+                        .foregroundStyle(voxieYellow)
+                    Text("STEL VOXIE IN")
+                        .font(.headline)
+                        .foregroundStyle(voxieYellow)
+                    Text("Open Voxie op je iPhone of iPad en kies daar je gebruikersnaam. Daarna verschijnt je profiel hier automatisch.")
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                }
+                .padding()
+                .background(.black)
             } else {
                 TabView {
                     talkingPage
@@ -26,6 +43,11 @@ struct VoxieHomeView: View {
         ScrollView {
             VStack(spacing: 10) {
                 HStack {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundStyle(.black)
+                        .frame(width: 26, height: 26)
+                        .background(voxieYellow, in: RoundedRectangle(cornerRadius: 6))
                     Text("VOXIE").tracking(2)
                         .font(.system(size: 15, weight: .black, design: .rounded))
                         .foregroundStyle(voxieYellow)
