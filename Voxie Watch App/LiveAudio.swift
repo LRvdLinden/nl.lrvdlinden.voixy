@@ -11,10 +11,17 @@ final class LiveAudio {
                                         sampleRate: 16_000, channels: 1, interleaved: false)!
     private let floatFormat = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!
     private var capturing = false
+    private var playbackLevel: Float = 1
 
     init() {
         playback.attach(player)
         playback.connect(player, to: playback.mainMixerNode, format: floatFormat)
+        playback.mainMixerNode.outputVolume = playbackLevel
+    }
+
+    func setPlaybackVolume(_ value: Float) {
+        playbackLevel = min(1, max(0.1, value))
+        playback.mainMixerNode.outputVolume = playbackLevel
     }
 
     func prepare() throws {
