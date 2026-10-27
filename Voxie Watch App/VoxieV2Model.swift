@@ -58,6 +58,7 @@ final class VoxieV2Model: ObservableObject {
     @Published private(set) var invitations: [VoxieInvitation] = []
     @Published var selectedFriendID: String?
     @Published private(set) var available = UserDefaults.standard.object(forKey: "v2.available") as? Bool ?? true
+    @Published private(set) var playbackVolume = UserDefaults.standard.object(forKey: "voxie.playbackVolume") as? Double ?? 1.0
     @Published private(set) var isSpeaking = false
     @Published private(set) var isSending = false
 
@@ -72,6 +73,10 @@ final class VoxieV2Model: ObservableObject {
     private var holding = false
     private var pushToken: String?
     private var maxRecordingTask: Task<Void, Never>?
+
+    init() {
+        audio.setPlaybackVolume(Float(playbackVolume))
+    }
 
     var ready: Bool { !token.isEmpty && server.hasPrefix("https://") }
     var selected: VoxieFriend? { friends.first { $0.id == selectedFriendID } }
@@ -293,6 +298,15 @@ final class VoxieV2Model: ObservableObject {
             do { let _: OkReply = try await send("/v2/presence", body: Body(name: nil, code: nil, available: value)) }
             catch { status = "Status: \(error.localizedDescription)" }
         }
+    }
+
+    func setPlaybackVolume(_ value: Double) {
+        playbackVolume = min(1, max(0.1, value))
+        UserDefaults.standard.set(playbackVolume, forKey: "voxie.playbackVolume")
+        audio.setPlaybackVolume(Float(playbackVolume))
+        #if os(iOS)
+        VoxieWatchBridge.shared.publishVolume(playbackVolume)
+        #endif
     }
 
     func beginSpeaking() {
