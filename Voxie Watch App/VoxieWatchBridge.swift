@@ -6,6 +6,7 @@ final class VoxieWatchBridge: NSObject, WCSessionDelegate {
     static let shared = VoxieWatchBridge()
 
     var onSessionChanged: ((String?) -> Void)?
+    var onVolumeChanged: ((Double) -> Void)?
     private var pendingContext: [String: Any]?
 
     func activate() {
@@ -23,10 +24,18 @@ final class VoxieWatchBridge: NSObject, WCSessionDelegate {
     #if os(iOS)
     func publish(token: String?) {
         if let token {
-            pendingContext = ["configured": true, "watchToken": token]
+            pendingContext = ["configured": true, "watchToken": token,
+                              "playbackVolume": UserDefaults.standard.object(forKey: "voxie.playbackVolume") as? Double ?? 1]
         } else {
             pendingContext = ["configured": false]
         }
+        flush()
+    }
+
+    func publishVolume(_ volume: Double) {
+        var context = pendingContext ?? WCSession.default.applicationContext
+        context["playbackVolume"] = volume
+        pendingContext = context
         flush()
     }
 
@@ -51,6 +60,9 @@ final class VoxieWatchBridge: NSObject, WCSessionDelegate {
         let token = applicationContext["configured"] as? Bool == true
             ? applicationContext["watchToken"] as? String : nil
         DispatchQueue.main.async { [weak self] in
+            if let volume = applicationContext["playbackVolume"] as? Double {
+                self?.onVolumeChanged?(volume)
+            }
             self?.onSessionChanged?(token)
         }
     }
