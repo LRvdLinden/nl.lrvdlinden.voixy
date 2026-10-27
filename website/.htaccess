@@ -1,0 +1,7 @@
+DirectoryIndex index.html
+Options -MultiViews
+RewriteEngine On
+RewriteRule ^u/[A-Za-z0-9_]{3,20}/?$ /index.html [L]
+<Files "apple-app-site-association">
+  ForceType application/json
+</Files>
