@@ -155,6 +155,15 @@ Deno.serve(async (req: Request) => {
   const me = await userFrom(req);
   if (!me) return fail(401, "unauthorized");
 
+  // Explicit account deletion only. iOS does not notify servers on uninstall.
+  // Foreign keys cascade invitations, friendships, sessions and audio frames.
+  if (req.method === "DELETE" && path === "/v3/account") {
+    const { data, error } = await db.from("voxie_users").delete()
+      .eq("id", me.id).select("id");
+    if (error || data?.length !== 1) return fail(500, "account deletion failed");
+    return json(200, { ok: true });
+  }
+
   if (req.method === "POST" && path === "/v3/profile") {
     const input = await bodyJSON(req, 150000);
     if (!input || typeof input !== "object") return fail(400, "invalid profile");
