@@ -4,7 +4,7 @@
   // Visitors may always override the choice, including on shared/profile links.
   const locale = navigator.language || '';
   const stored = (() => { try { return localStorage.getItem('voxie.site.language'); } catch { return null; } })();
-  let language = stored === 'nl' || stored === 'en' ? stored : (/^nl-NL$/i.test(locale) ? 'nl' : 'en');
+  let language = stored === 'nl' || stored === 'en' ? stored : (/-NL$/i.test(locale) ? 'nl' : 'en');
   const translations = new Map(Object.entries({
     'Hoofdnavigatie':'Main navigation','Hoe het werkt':'How it works','Waarom Voxie':'Why Voxie','Binnenkort beschikbaar':'Coming soon',
     'WALKIETALKIE, MAAR DAN OPNIEUW':'THE WALKIE-TALKIE, REIMAGINED',
