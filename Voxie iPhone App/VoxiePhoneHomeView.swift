@@ -14,6 +14,8 @@ struct VoxiePhoneHomeView: View {
     @State private var showSettings = false
     @State private var showTalk = false
     @State private var holding = false
+    @State private var handlingInvitationID: Int?
+    @State private var invitationFeedback = ""
     @State private var onboardingActive = VoxieCredentialStore.load() == nil
     @State private var onboardingStep = 0
 
@@ -33,12 +35,15 @@ struct VoxiePhoneHomeView: View {
                 VStack(spacing: 20) {
                     header
                     profileCard
+                    incomingInvitations
                     friendsList
-                    Text(model.status)
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(.white.opacity(0.68))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity)
+                    if model.status != "Log in met Apple" {
+                        Text(model.status)
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(.white.opacity(0.68))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
                 }
                 .padding(.horizontal, 22)
                 .padding(.vertical, 22)
@@ -245,6 +250,85 @@ struct VoxiePhoneHomeView: View {
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var incomingInvitations: some View {
+        if !model.invitations.isEmpty {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Image(systemName: "person.crop.circle.badge.plus")
+                        .font(.title2)
+                        .foregroundStyle(.black)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("VRIENDSCHAPSVERZOEKEN")
+                            .font(.system(.headline, design: .rounded, weight: .black))
+                            .foregroundStyle(.black)
+                        Text("\(model.invitations.count) ontvangen")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.black.opacity(0.75))
+                    }
+                    Spacer()
+                }
+                ForEach(model.invitations) { invitation in
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("@\(invitation.name) wil jouw vriend worden")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(.black)
+                        HStack(spacing: 12) {
+                            Button {
+                                handleInvitation(invitation.id, accept: true)
+                            } label: {
+                                Label("Accepteren", systemImage: "checkmark.circle.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.black)
+                            Button {
+                                handleInvitation(invitation.id, accept: false)
+                            } label: {
+                                Text("Weigeren").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.black)
+                        }
+                        .disabled(handlingInvitationID != nil)
+                        if handlingInvitationID == invitation.id {
+                            ProgressView("Verzoek verwerken…")
+                                .tint(.black)
+                        }
+                    }
+                    .padding(14)
+                    .background(.black.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
+                }
+                if !invitationFeedback.isEmpty {
+                    Text(invitationFeedback)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.black)
+                }
+            }
+            .padding(18)
+            .background(Palette.yellow, in: RoundedRectangle(cornerRadius: 20))
+            .accessibilityElement(children: .contain)
+        } else if !invitationFeedback.isEmpty {
+            Text(invitationFeedback)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Palette.yellow)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func handleInvitation(_ id: Int, accept: Bool) {
+        guard handlingInvitationID == nil else { return }
+        handlingInvitationID = id
+        invitationFeedback = ""
+        Task {
+            let saved = await model.respond(invitation: id, accept: accept)
+            invitationFeedback = saved
+                ? (accept ? "Vriendschapsverzoek geaccepteerd. Je vriend staat nu bij Vrienden." : "Vriendschapsverzoek geweigerd.")
+                : model.status
+            handlingInvitationID = nil
         }
     }
 
