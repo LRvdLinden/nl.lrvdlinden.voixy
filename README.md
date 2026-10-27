@@ -68,6 +68,13 @@ Op iPhone loopt de eerste installatie door zeven stappen: welkom (met veegbare i
 
 Op de Watch is **geen Log in met Apple**-scherm meer beschikbaar. De iPhone vraagt met zijn bestaande sessie een aparte Watch-sessie aan bij de server (`POST /v3/watch-session`) en draagt deze via Apple's WatchConnectivity over aan de gekoppelde Watch. De Watch slaat die lokaal op in de Keychain. Zolang dat niet gebeurd is, toont de Watch alleen de verwijzing naar de iPhone. Hiervoor moet de Watch gekoppeld zijn aan de iPhone en WatchConnectivity de context kunnen bezorgen; de overdracht kan enige tijd duren. Op een iPad kan niet rechtstreeks een Apple Watch worden gekoppeld.
 
+### Correctie 'network cancelled' (build 14)
+
+- Een tijdelijk inactieve iPhone (bijvoorbeeld tijdens een systeemvenster) annuleert niet meer alle Voxie-netwerkverzoeken.
+- Normale `URLError.cancelled` en taakannuleringen worden niet langer onterecht als netwerkfout getoond.
+- Een naar de achtergrond gaande app bewaart niet-verzonden PCM tijdelijk in het geheugen totdat Voxie weer actief is; uitloggen wist de wachtrij wel.
+- De audio- en Watch-layoutverbeteringen van build 13 zijn inbegrepen.
+
 ### Audio- en Watch-correcties (build 13)
 
 - Inkomende spraak wordt ook afgespeeld wanneer een ándere vriend geselecteerd is, of wanneer niemand geselecteerd is. Zo worden frames niet langer stilzwijgend overgeslagen.
