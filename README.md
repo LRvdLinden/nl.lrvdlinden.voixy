@@ -68,6 +68,16 @@ Op iPhone loopt de eerste installatie door zeven stappen: welkom (met veegbare i
 
 Op de Watch is **geen Log in met Apple**-scherm meer beschikbaar. De iPhone vraagt met zijn bestaande sessie een aparte Watch-sessie aan bij de server (`POST /v3/watch-session`) en draagt deze via Apple's WatchConnectivity over aan de gekoppelde Watch. De Watch slaat die lokaal op in de Keychain. Zolang dat niet gebeurd is, toont de Watch alleen de verwijzing naar de iPhone. Hiervoor moet de Watch gekoppeld zijn aan de iPhone en WatchConnectivity de context kunnen bezorgen; de overdracht kan enige tijd duren. Op een iPad kan niet rechtstreeks een Apple Watch worden gekoppeld.
 
+### Audio- en Watch-correcties (build 13)
+
+- Inkomende spraak wordt ook afgespeeld wanneer een ándere vriend geselecteerd is, of wanneer niemand geselecteerd is. Zo worden frames niet langer stilzwijgend overgeslagen.
+- Bij afspeelfouten houdt de ontvanger de cursor vast om opnieuw te proberen, en toont de app de foutmelding.
+- Uitgaande PCM-frames worden pas verstuurd nadat de praatknop is losgelaten; bij een netwerkfout blijft het niet-verzonden frame lokaal in de wachtrij voor een nieuwe poging.
+- De Watch heeft nu de grote gele, afgeronde praatknop in Apple Walkietalkie-stijl, met de terugknop **onder** de praatknop.
+- Audio blijft via `AVAudioSession.Category.playAndRecord` spelen in de iOS-stilmodus, voor zover de audiouitvoer en het systeemvolume dat toelaten.
+- Automatisch afspelen wanneer de app is afgesloten, of het automatisch openen van het zichtbare appvenster, is **niet** gerealiseerd. Voor achtergrondontvangst is Apple's officiële Push to Talk-framework met APNs-integratie nodig; iOS brengt apps niet vanzelf zichtbaar naar de voorgrond.
+- De broncode van het gedeelde project `andreapianidev/WalkieTalkie` is bestudeerd als architectuurreferentie: diens MultipeerConnectivity-opzet is alleen voor nabije apparaten, niet voor Voxie's internetverbinding. De code heeft bovendien een niet-commerciële licentie en is niet overgenomen.
+
 ### Vrienden en geluid (build 12)
 
 - Branding: het woordmerk is nu **voxie.** op iPhone en Apple Watch, in dezelfde stijl als de website.
