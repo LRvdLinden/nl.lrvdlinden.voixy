@@ -68,6 +68,13 @@ Op iPhone loopt de eerste installatie door zeven stappen: welkom (met veegbare i
 
 Op de Watch is **geen Log in met Apple**-scherm meer beschikbaar. De iPhone vraagt met zijn bestaande sessie een aparte Watch-sessie aan bij de server (`POST /v3/watch-session`) en draagt deze via Apple's WatchConnectivity over aan de gekoppelde Watch. De Watch slaat die lokaal op in de Keychain. Zolang dat niet gebeurd is, toont de Watch alleen de verwijzing naar de iPhone. Hiervoor moet de Watch gekoppeld zijn aan de iPhone en WatchConnectivity de context kunnen bezorgen; de overdracht kan enige tijd duren. Op een iPad kan niet rechtstreeks een Apple Watch worden gekoppeld.
 
+### Vriendschapsverzoeken op het beginscherm (build 11)
+
+- Nieuwe inkomende verzoeken verschijnen direct in een geel blok op het iPhone/iPad-beginscherm, met Accepteren en Weigeren.
+- Na verwerken verschijnt duidelijke feedback; bij een fout blijft het verzoek opnieuw te behandelen.
+- Een bestaande Apple-sessie toont na het verversen van het profiel niet langer de oude statusmelding “Log in met Apple”.
+- Bij het accepteren slaat de server eerst de vriendschap op voordat het uitnodigingsverzoek op geaccepteerd gaat.
+
 ### Website en deelbare profiellinks (build 10)
 
 - De statische marketingwebsite in `website/` is voorbereid voor **https://voxie.online** met de boodschap *Binnenkort in de App Store*. De vormgeving gebruikt Voxie's geel-zwart.
