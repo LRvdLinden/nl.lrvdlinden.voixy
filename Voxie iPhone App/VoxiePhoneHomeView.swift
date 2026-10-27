@@ -123,6 +123,9 @@ struct VoxiePhoneHomeView: View {
                 VoxieWatchBridge.shared.publish(token: nil)
             }
         }
+        .onChange(of: model.username) { _, username in
+            if !username.isEmpty { VoxiePushToTalk.shared.attach(model) }
+        }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active: model.start()
@@ -414,6 +417,7 @@ struct VoxiePhoneHomeView: View {
 
 private struct PhoneOnboardingFlow: View {
     @EnvironmentObject private var model: VoxieV2Model
+    @ObservedObject private var ptt = VoxiePushToTalk.shared
     @Binding var step: Int
     let onFinish: () -> Void
 
@@ -439,12 +443,13 @@ private struct PhoneOnboardingFlow: View {
                 case 3: usernameStep
                 case 4: photoStep
                 case 5: deliveryStep
+                case 6: pushToTalkStep
                 default: finishStep
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             if step != 2 {
-                Text("\(min(step + 1, 7)) / 7")
+                Text("\(min(step + 1, 8)) / 8")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.gray)
                     .padding(.bottom, 12)
@@ -488,10 +493,21 @@ private struct PhoneOnboardingFlow: View {
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
                 }.tag(1)
+                VStack(spacing: 22) {
+                    Image(systemName: "speaker.wave.3.fill")
+                        .font(.system(size: 76))
+                        .foregroundStyle(Palette.yellow)
+                    Text("Ook als Voxie gesloten is")
+                        .font(.title.bold())
+                        .multilineTextAlignment(.center)
+                    Text("Met Apple's Push to Talk kan je iPhone of iPad automatisch spraak ontvangen op de achtergrond. Je activeert dit na het instellen van je profiel. Apple brengt de app niet vanzelf zichtbaar naar de voorgrond.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                }.tag(2)
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
-            Button(introPage == 0 ? "Volgende" : "Log in met Apple") {
-                if introPage == 0 { introPage = 1 }
+            Button(introPage < 2 ? "Volgende" : "Log in met Apple") {
+                if introPage < 2 { introPage += 1 }
                 else { step = 2 }
             }
             .buttonStyle(.borderedProminent)
@@ -629,6 +645,35 @@ private struct PhoneOnboardingFlow: View {
         case "watch": return "Alleen Apple Watch"
         case "phone": return "Alleen iPhone/iPad"
         default: return "Beide apparaten"
+        }
+    }
+
+    private var pushToTalkStep: some View {
+        VStack(spacing: 24) {
+            Image(systemName: "waveform.badge.mic")
+                .font(.system(size: 83, weight: .medium))
+                .foregroundStyle(Palette.yellow)
+            Text("Ontvang spraak op de achtergrond")
+                .font(.title.bold())
+                .multilineTextAlignment(.center)
+            Text("Activeer Apple's Push to Talk één keer op je iPhone of iPad. Daarna kan Voxie inkomende spraak ontvangen als je de app niet open hebt. iOS opent de app daarbij niet zichtbaar. Je Apple Watch ontvangt nog wanneer Voxie actief is.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Text(ptt.status)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Palette.yellow)
+                .multilineTextAlignment(.center)
+            if ptt.isActive {
+                Button("Verder") { step = 7 }
+                    .buttonStyle(.borderedProminent).tint(Palette.yellow).foregroundStyle(.black)
+                    .controlSize(.large)
+            } else {
+                Button("Activeer Push to Talk") { ptt.join() }
+                    .buttonStyle(.borderedProminent).tint(Palette.yellow).foregroundStyle(.black)
+                    .controlSize(.large)
+            }
+            Button("Voorlopig overslaan") { step = 7 }
+                .foregroundStyle(.secondary)
         }
     }
 

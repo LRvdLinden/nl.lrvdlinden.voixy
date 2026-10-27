@@ -11,7 +11,7 @@ Geel-zwarte iPhone- en Apple Watch-app. Houd de gele knop ingedrukt om maximaal 
 | Widget/Control Bundle ID | `nl.lrvdlinden.Voxie.watchkitapp.control` |
 | Development Team | `EU3UY476T6` |
 | Marketingversie | `1.0.0` |
-| Build | `15` |
+| Build | `16` |
 | Type | iPhone-companion met zelfstandig werkende Watch-app |
 | Backend | Supabase Edge Function |
 
@@ -33,6 +33,14 @@ Wanneer de eerste migratie al handmatig is uitgevoerd en niet in Supabase's migr
 De server controleert Apple ID-tokens met Apple's ondertekende sleutelset en gebruikt korte, eenmalige login-challenges. Hij bewaart een unieke, niet-hoofdlettergevoelige gebruikersnaam, de gekozen avatar en een vriendenlijst per Apple-account. Na Apple-aanmelding op de iPhone ontvangt de gekoppelde Watch een eigen sessie via WatchConnectivity. Audioframes worden na 30 seconden niet meer opgehaald. Voor publieke lancering zijn aanvullende beveiligingsmaatregelen nodig, zoals rate limiting, sessie-intrekking, quotas, opschoning en een privacybeleid. Audio is HTTPS-versleuteld, maar niet end-to-end-versleuteld.
 
 ## Xcode
+
+### Build 16 — Push to Talk startvolgorde en welkomstinstructies
+
+- Een tik op **Activeer Push to Talk** tijdens het initialiseren wordt onthouden; zodra Apple het kanaalbeheer beschikbaar maakt, wordt de eerder expliciet aangevraagde activatie uitgevoerd zolang de iPhone/iPad nog op de voorgrond is. De app blijft niet eindeloos met dezelfde voorbereidingsmelding staan: na twaalf seconden verschijnt concrete uitleg om Xcode-capabilities te controleren.
+- De eerste welkomstslides leggen achtergrondontvangst uit. Na aanmelding, gebruikersnaam, profielfoto en ontvangstkeuze volgt een aparte pagina **Ontvang spraak op de achtergrond**, inclusief activeren of overslaan. Daarna volgt pas **Start Voxie**.
+- Bestaande profielen houden hun afgeronde configuratie; de nieuwe stap is voor nieuwe installaties. Activatie achteraf blijft beschikbaar in Instellingen. Apple Watch ondersteunt de iOS Push to Talk-activatie zelf niet.
+- Deze code moet op een fysieke iPhone/iPad worden geverifieerd met ingeschakelde Apple Push to Talk-capability; een Apple APNs-sleutel is daarnaast vereist voor de servermeldingen.
+
 
 ### Build 15 — iPhone/iPad Push to Talk en NL/EN website
 

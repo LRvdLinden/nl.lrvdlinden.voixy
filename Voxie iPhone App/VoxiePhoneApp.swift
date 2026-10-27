@@ -38,6 +38,8 @@ final class VoxiePushToTalk: NSObject, ObservableObject, PTChannelManagerDelegat
     private var token: Data?
     private var channelID = UUID(uuidString: "092a7a87-f354-478d-8d85-5ea370f32d91")!
     private var initialized = false
+    private var pendingForegroundJoin = false
+    var isActive: Bool { manager?.activeChannelUUID != nil }
     private var playbackTask: Task<Void, Never>?
 
     func initialize() {
@@ -50,8 +52,22 @@ final class VoxiePushToTalk: NSObject, ObservableObject, PTChannelManagerDelegat
                     channelID = restored
                     status = "Achtergrondontvangst actief"
                     await uploadTokenIfPossible()
+                    pendingForegroundJoin = false
+                } else if pendingForegroundJoin {
+                    pendingForegroundJoin = false
+                    if UIApplication.shared.applicationState == .active, let manager {
+                        requestJoin(using: manager)
+                    } else {
+                        status = "Open Voxie op je iPhone om Push to Talk te activeren"
+                    }
+                } else {
+                    status = "Klaar om Push to Talk te activeren"
                 }
-            } catch { status = "Push to Talk niet beschikbaar: \(error.localizedDescription)" }
+            } catch {
+                initialized = false // A later button press may retry initialization.
+                pendingForegroundJoin = false
+                status = "Push to Talk niet beschikbaar: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -65,13 +81,34 @@ final class VoxiePushToTalk: NSObject, ObservableObject, PTChannelManagerDelegat
             status = "Stel eerst je profiel in op iPhone/iPad"
             return
         }
-        guard let manager else { status = "Push to Talk wordt voorbereid…"; return }
+        guard UIApplication.shared.applicationState == .active else {
+            status = "Open Voxie om achtergrondontvangst te activeren"
+            return
+        }
+        guard let manager else {
+            // Remember the explicit foreground tap and complete it once Apple
+            // supplies the manager. This avoids an indefinitely stuck button.
+            pendingForegroundJoin = true
+            status = "Push to Talk voorbereiden…"
+            initialize()
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(12))
+                guard let self, self.pendingForegroundJoin, self.manager == nil else { return }
+                self.status = "Apple reageert nog niet. Controleer Push to Talk in Xcode en probeer het opnieuw."
+            }
+            return
+        }
+        requestJoin(using: manager)
+    }
+
+    private func requestJoin(using manager: PTChannelManager) {
         if manager.activeChannelUUID != nil { status = "Achtergrondontvangst actief"; return }
         status = "Kanaal activeren…"
         manager.requestJoinChannel(channelUUID: channelID, descriptor: channelDescriptor(restoredChannelUUID: channelID))
     }
 
     func leave() {
+        pendingForegroundJoin = false
         manager?.leaveChannel(channelUUID: channelID)
         status = "Niet geactiveerd"
         Task { await model?.clearPushToTalkToken() }
@@ -116,6 +153,7 @@ final class VoxiePushToTalk: NSObject, ObservableObject, PTChannelManagerDelegat
     }
 
     func channelManager(_ channelManager: PTChannelManager, didJoinChannel channelUUID: UUID, reason: PTChannelJoinReason) {
+        pendingForegroundJoin = false
         channelID = channelUUID
         status = "Achtergrondontvangst actief"
         Task { await uploadTokenIfPossible() }
