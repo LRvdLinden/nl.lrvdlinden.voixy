@@ -11,9 +11,8 @@ struct VoxieSignInView: View {
             Image(systemName: "waveform")
                 .font(.system(size: 34, weight: .black))
                 .foregroundStyle(.yellow)
-            Text("VOXIE")
+            (Text("voxie").foregroundColor(.white) + Text(".").foregroundColor(.yellow))
                 .font(.system(size: 23, weight: .black, design: .rounded))
-                .foregroundStyle(.yellow)
             Group {
                 #if os(watchOS)
                 Text("Stel Voxie eerst in op je iPhone of iPad. Meld je daarna hier aan met hetzelfde Apple-account.")
