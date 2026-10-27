@@ -43,11 +43,6 @@ struct VoxieHomeView: View {
         ScrollView {
             VStack(spacing: 10) {
                 HStack {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 15, weight: .black))
-                        .foregroundStyle(.black)
-                        .frame(width: 26, height: 26)
-                        .background(voxieYellow, in: RoundedRectangle(cornerRadius: 6))
                     Text("VOXIE").tracking(2)
                         .font(.system(size: 15, weight: .black, design: .rounded))
                         .foregroundStyle(voxieYellow)
