@@ -2,6 +2,13 @@
 
 Static, responsive marketing site + shareable profile landing pages.
 
+## Hero previews
+
+The iPhone and Apple Watch screens in the hero are **fictional design previews**
+implemented in HTML/CSS. They do not show a signed-in account or claim to be
+actual device screenshots. Their caption explicitly says `CONCEPTSCHERMEN`.
+No emoji or live App Store download link appears on the marketing page.
+
 ## Public profile links
 
 Share URLs look like `https://voxie.online/u/leon`. Apache `.htaccess` rewrites
