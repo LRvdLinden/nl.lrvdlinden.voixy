@@ -30,6 +30,9 @@ struct VoxieHomeView: View {
             VoxieWatchBridge.shared.onSessionChanged = { token in
                 model.acceptWatchSession(token)
             }
+            VoxieWatchBridge.shared.onVolumeChanged = { volume in
+                model.setPlaybackVolume(volume)
+            }
             VoxieWatchBridge.shared.activate()
             model.start()
         }
