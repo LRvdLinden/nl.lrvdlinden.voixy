@@ -68,6 +68,14 @@ Op iPhone loopt de eerste installatie door zeven stappen: welkom (met veegbare i
 
 Op de Watch is **geen Log in met Apple**-scherm meer beschikbaar. De iPhone vraagt met zijn bestaande sessie een aparte Watch-sessie aan bij de server (`POST /v3/watch-session`) en draagt deze via Apple's WatchConnectivity over aan de gekoppelde Watch. De Watch slaat die lokaal op in de Keychain. Zolang dat niet gebeurd is, toont de Watch alleen de verwijzing naar de iPhone. Hiervoor moet de Watch gekoppeld zijn aan de iPhone en WatchConnectivity de context kunnen bezorgen; de overdracht kan enige tijd duren. Op een iPad kan niet rechtstreeks een Apple Watch worden gekoppeld.
 
+### Website en deelbare profiellinks (build 10)
+
+- De statische marketingwebsite in `website/` is voorbereid voor **https://voxie.online** met de boodschap *Binnenkort in de App Store*. De vormgeving gebruikt Voxie's geel-zwart.
+- In de iPhone/iPad-app deelt een gebruiker zijn profiel als `https://voxie.online/u/<gebruikersnaam>`.
+- Universal Links (of vanaf de website de `voxie://u/<gebruikersnaam>`-link) openen de iOS-app. Voordat er iets gebeurt, vraagt de app bevestiging om een **vriendschapsverzoek te sturen**. De ontvanger moet het verzoek daarna nog zelf accepteren. Er is geen automatische vriendschap zonder wederzijdse toestemming.
+- Activeer op het iPhone App ID de Apple capability **Associated Domains** met `applinks:voxie.online`. Host de meegeleverde `website/.well-known/apple-app-site-association` via HTTPS zonder redirects.
+- De workflow `.github/workflows/deploy-website.yml` publiceert `website/` via FTPS na het toevoegen van GitHub Secrets `FTP_SERVER`, `FTP_PORT`, `FTP_USER`, `FTP_PASSSWORD` (ook `FTP_PASSWORD` wordt ondersteund). Optionele repositoryvariabelen zijn `FTP_PROTOCOL` en `FTP_REMOTE_DIR`. Raadpleeg `website/README.md`.
+
 ### Kortlevende spraakblokken
 
 **Build 9:** de downloadtermijn is 30 seconden. Bij de keuze *beide* moet het audioblok door zowel iPhone als Watch lokaal zijn ontvangen, en minstens één van de twee moet het afspelen hebben voltooid, vóórdat de server het blok verwijdert. Als een apparaat offline blijft, verloopt de downloadtermijn zonder beide bevestigingen.
