@@ -30,12 +30,12 @@ Wanneer de eerste migratie al handmatig is uitgevoerd en niet in Supabase's migr
 
 > De Edge Function gebruikt Supabase's server-side secret key uit de serveromgeving. Zet de `service_role` of `sb_secret_...` **nooit** in de Watch-app, je GitHub-repository of een publieke build. In `supabase/config.toml` staat `verify_jwt = false` omdat Voxie eigen willekeurige bearer tokens gebruikt, die de functie aan gehashte tokens in de database koppelt. Dit is een ontwikkelontwerp dat vóór publieke lancering een security review en rate limiting vereist.
 
-De server controleert Apple ID-tokens met Apple's ondertekende sleutelset en gebruikt korte, eenmalige login-challenges. Hij bewaart een unieke, niet-hoofdlettergevoelige gebruikersnaam, de gekozen avatar en een vriendenlijst per Apple-account. iPhone/iPad en Watch kunnen na afzonderlijke Apple-aanmelding hetzelfde profiel zien. Audioframes worden na 15 seconden niet meer opgehaald. Voor publieke lancering zijn aanvullende beveiligingsmaatregelen nodig, zoals rate limiting, accountverwijdering, sessie-intrekking, quotas, opschoning en een privacybeleid. Audio is HTTPS-versleuteld, maar niet end-to-end-versleuteld.
+De server controleert Apple ID-tokens met Apple's ondertekende sleutelset en gebruikt korte, eenmalige login-challenges. Hij bewaart een unieke, niet-hoofdlettergevoelige gebruikersnaam, de gekozen avatar en een vriendenlijst per Apple-account. Na Apple-aanmelding op de iPhone ontvangt de gekoppelde Watch een eigen sessie via WatchConnectivity. Audioframes worden na 15 seconden niet meer opgehaald. Voor publieke lancering zijn aanvullende beveiligingsmaatregelen nodig, zoals rate limiting, sessie-intrekking, quotas, opschoning en een privacybeleid. Audio is HTTPS-versleuteld, maar niet end-to-end-versleuteld.
 
 ## Xcode
 
 1. Open `Voxie.xcodeproj` op je Mac met Xcode 27 en selecteer je Development Team.
-2. Activeer onder **Signing & Capabilities** de capability **Sign in with Apple** voor de iPhone- en de Watch-targets. De entitlements zijn al aan het project gekoppeld; controleer dat je Apple Developer App IDs/provisioning profiles de capability ondersteunen. Activeer eventueel **Push Notifications** voor APNs.
+2. Activeer onder **Signing & Capabilities** de capability **Sign in with Apple** voor de iPhone-target. De entitlements zijn aan het project gekoppeld; controleer de Apple Developer App IDs/provisioning profiles. De Watch krijgt zijn sessie via WatchConnectivity en heeft geen Apple-aanmeldscherm. Activeer eventueel **Push Notifications** voor APNs.
 3. Kies voor testen op Apple Watch het gedeelde schema **Voxie Watch App** en een echte Watch. Kies voor iPhone **Voxie App Store** en een iPhone-simulator of fysiek toestel. Controleer alle drie targets.
 4. Start Voxie en kies **Log in met Apple**. De app neemt automatisch contact op met de Voxie-server. Kies op iPhone/iPad een **unieke gebruikersnaam**, zoals `leon_01`, en eventueel een profielfoto.
 5. Vrienden nodigen elkaar uit met `@gebruikersnaam`, niet met een code. Accepteren en weigeren kan op iPhone/iPad of Watch.
@@ -61,6 +61,18 @@ Het iPhone-target gebruikt `com.apple.product-type.application`. De Watch-app ge
 - In iPhone/iPad-instellingen staat **Berichten ontvangen op**: alleen Apple Watch, alleen iPhone/iPad, of beide. Dit wordt per account op de server opgeslagen. De keuze stuurt de **spraakontvangst terwijl de apps open zijn**; achtergrondmeldingen of automatisch afspelen in een gesloten app zijn nog niet aanwezig.
 - Er staat geen extra vast icoon linksboven in de hoofdschermen op iPhone/iPad of Watch; het eigenlijke app-icoon op het beginscherm blijft behouden. Een optionele profielfoto staat afzonderlijk in de profielkaart.
 - Onder Instellingen → **Account en gegevens verwijderen** kan de gebruiker na bevestiging het serveraccount definitief wissen. Daarbij verwijdert de database via referentiële cascading de vrienden, uitnodigingen, sessies en spraakframes, en wist de iPhone de lokale sessie uit de Keychain. De Watch wordt bij een volgende servercontrole automatisch afgemeld. Apple biedt geen betrouwbare uninstall-callback: het verwijderen van alleen de app kan het online account **niet** automatisch wissen. Verwijder daarom eerst het account via de app en daarna desgewenst de app. Voxie gebruikt geen eigen CloudKit/iCloud-database.
+
+### Stapsgewijze installatie en Watch-koppeling (build 8)
+
+Op iPhone loopt de eerste installatie door zeven stappen: welkom (met veegbare introductie), Log in met Apple, unieke gebruikersnaam, profielfoto of overslaan, ontvangst op Watch/iPhone/beide, afronding en **Start Voxie**. Op volgende starts opent een geconfigureerd account direct het vriendenoverzicht. Daar is geen praatknop; kies eerst een vriend om zijn of haar gesprekscherm te openen. De Watch werkt hetzelfde: vriend kiezen toont pas dan de praatknop.
+
+Op de Watch is **geen Log in met Apple**-scherm meer beschikbaar. De iPhone vraagt met zijn bestaande sessie een aparte Watch-sessie aan bij de server (`POST /v3/watch-session`) en draagt deze via Apple's WatchConnectivity over aan de gekoppelde Watch. De Watch slaat die lokaal op in de Keychain. Zolang dat niet gebeurd is, toont de Watch alleen de verwijzing naar de iPhone. Hiervoor moet de Watch gekoppeld zijn aan de iPhone en WatchConnectivity de context kunnen bezorgen; de overdracht kan enige tijd duren. Op een iPad kan niet rechtstreeks een Apple Watch worden gekoppeld.
+
+### Kortlevende spraakblokken
+
+Spraak wordt in deze versie **nog kortstondig** als PCM-blokken in `voxie_audio_frames` opgeslagen. Nadat een apparaat het afspelen heeft bevestigd, wordt het blok verwijderd. Bij ontvangst op **beide** apparaten wacht de server op beide afspeelbevestigingen. Onbezorgde blokken worden na 15 seconden bij een volgende API-aanroep verwijderd. Voor gegarandeerde verwijdering bij inactiviteit: schakel de Supabase-database-extensie **pg_cron** in via Dashboard → Database → Extensions. De migratie `20261027010000_audio_delivery_ack.sql` plant dan een opschoontaak die iedere minuut verlopen spraakblokken verwijdert. Is pg_cron pas na de migratie ingeschakeld, voer de `cron.schedule`-opdracht uit de migratie uit in de SQL Editor.
+
+Dit is **niet** hetzelfde als audio nooit naar Supabase sturen: daarvoor is een latere WebRTC/Realtime-audiotransportlaag zonder databaseopslag nodig. Een afspeelbevestiging wordt verzonden op de audioplayer-callback `dataPlayedBack`, niet al tijdens het downloaden.
 
 Voor App Store-validatie staat `WKRunsIndependentlyOfCompanionApp` **niet** naast `WKWatchOnly`, want die twee waarden mogen niet beide `YES` zijn. De WidgetKit-extensie bevat daarnaast expliciet `CFBundleDisplayName = Voxie Control`.
 
