@@ -343,20 +343,24 @@ final class VoxieV2Model: ObservableObject {
                 let playedID = frame.id
                 try audio.play(data) { [weak self] in
                     Task { @MainActor [weak self] in
-                        await self?.acknowledgePlayedFrame(playedID, device: device)
+                        await self?.acknowledgeFrame(playedID, device: device, phase: "played")
                     }
+                }
+                // Queued in the local audio engine: this device has its copy.
+                Task { [weak self] in
+                    await self?.acknowledgeFrame(playedID, device: device, phase: "received")
                 }
                 status = "\(selected?.name ?? "Vriend") praat…"
             }
         } catch { /* transient audio network drop: next poll retries */ }
     }
 
-    private func acknowledgePlayedFrame(_ id: Int, device: String) async {
+    private func acknowledgeFrame(_ id: Int, device: String, phase: String) async {
         guard ready else { return }
         do {
             var request = try makeRequest("/v2/frames/ack", method: "POST")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let body = try JSONSerialization.data(withJSONObject: ["ids": [id], "device": device])
+            let body = try JSONSerialization.data(withJSONObject: ["ids": [id], "device": device, "phase": phase])
             let (_, response) = try await URLSession.shared.upload(for: request, from: body)
             try validate(response)
         } catch { /* 15-second expiry remains a fallback if an ACK is lost */ }
