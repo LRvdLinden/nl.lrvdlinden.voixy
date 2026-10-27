@@ -235,6 +235,8 @@ private struct PhoneSettingsSheet: View {
     @State private var isSaving = false
     @State private var feedback = ""
     @State private var savingDelivery = false
+    @State private var showDeleteConfirmation = false
+    @State private var deletingAccount = false
 
     var body: some View {
         NavigationStack {
@@ -301,6 +303,15 @@ private struct PhoneSettingsSheet: View {
                         .font(.footnote)
                 }
                 Section { Button("Log uit", role: .destructive) { model.signOut(); dismiss() } }
+                Section {
+                    Button("Account en gegevens verwijderen", role: .destructive) {
+                        showDeleteConfirmation = true
+                    }
+                    .disabled(deletingAccount)
+                    Text("Dit verwijdert je gebruikersnaam, profielfoto, uitnodigingen, vrienden, spraakframes en aanmeldsessies definitief van de Voxie-server. Verwijder daarna eventueel de app van je apparaten.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
             .navigationTitle(onboarding ? "Voxie instellen" : "Instellingen")
             .toolbar {
@@ -337,6 +348,21 @@ private struct PhoneSettingsSheet: View {
                     }
                     isSaving = false
                 }
+            }
+            .confirmationDialog("Voxie-account definitief verwijderen?",
+                                isPresented: $showDeleteConfirmation, titleVisibility: .visible) {
+                Button("Verwijder mijn account en alle gegevens", role: .destructive) {
+                    Task {
+                        deletingAccount = true
+                        let deleted = await model.deleteAccount()
+                        deletingAccount = false
+                        if deleted { dismiss() }
+                        else { feedback = model.status }
+                    }
+                }
+                Button("Annuleren", role: .cancel) {}
+            } message: {
+                Text("Dit is definitief en kan niet ongedaan gemaakt worden.")
             }
         }
         .preferredColorScheme(.dark)
