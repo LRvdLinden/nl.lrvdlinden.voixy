@@ -12,13 +12,6 @@ final class LiveAudio {
     private let floatFormat = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!
     private var capturing = false
     private var playbackLevel: Float = 1
-    private var systemManagesPTTSession = false
-
-    #if os(iOS)
-    func setPushToTalkAudioActive(_ active: Bool) {
-        systemManagesPTTSession = active
-    }
-    #endif
 
     init() {
         playback.attach(player)
@@ -32,13 +25,6 @@ final class LiveAudio {
     }
 
     func prepare() throws {
-        #if os(iOS)
-        if systemManagesPTTSession {
-            if !playback.isRunning { try playback.start() }
-            if !player.isPlaying { player.play() }
-            return
-        }
-        #endif
         let session = AVAudioSession.sharedInstance()
         #if os(iOS)
         // .playAndRecord bypasses the Ring/Silent switch, including when locked.
