@@ -21,6 +21,7 @@ struct VoxiePendingFriend: Decodable, Identifiable {
 }
 
 private struct AppleNonceReply: Decodable { let nonce: String }
+private struct WatchSessionReply: Decodable { let token: String }
 private struct AppleLoginReply: Decodable {
     let id: String; let token: String; let code: String
     let username: String?; let avatar: String?; let deliveryTarget: String?
@@ -142,8 +143,41 @@ final class VoxieV2Model: ObservableObject {
         } catch { status = "Ontvangst: \(error.localizedDescription)"; return false }
     }
 
+    #if os(iOS)
+    func createWatchSession() async -> String? {
+        guard ready, !username.isEmpty else { return nil }
+        do {
+            let result: WatchSessionReply = try await sendJSONObject("/v3/watch-session", value: [:])
+            return result.token
+        } catch {
+            status = "Watch-koppeling: \(error.localizedDescription)"
+            return nil
+        }
+    }
+    #endif
+
+    #if os(watchOS)
+    func acceptWatchSession(_ pairedToken: String?) {
+        guard let pairedToken, pairedToken.count == 64 else {
+            signOut()
+            return
+        }
+        guard token != pairedToken else { return }
+        stop()
+        token = pairedToken
+        VoxieCredentialStore.save(pairedToken)
+        UserDefaults.standard.set(true, forKey: "voxie.watchPairedViaPhone")
+        hasLoadedProfile = false
+        status = "Profiel ophalen van iPhone…"
+        start()
+    }
+    #endif
+
     func signOut() {
         stop(); VoxieCredentialStore.clear(); token = ""; identity = ""
+        #if os(watchOS)
+        UserDefaults.standard.removeObject(forKey: "voxie.watchPairedViaPhone")
+        #endif
         username = ""; avatarBase64 = nil; deliveryTarget = "both"
         hasLoadedProfile = false; code = ""; friends = []; pending = []; invitations = []
         selectedFriendID = nil; status = "Log in met Apple"
@@ -306,10 +340,26 @@ final class VoxieV2Model: ObservableObject {
                 cursor = max(cursor, frame.id)
                 guard available, !isSpeaking, frame.sender == selectedFriendID,
                       let data = Data(base64Encoded: frame.pcm) else { continue }
-                try audio.play(data)
+                let playedID = frame.id
+                try audio.play(data) { [weak self] in
+                    Task { @MainActor [weak self] in
+                        await self?.acknowledgePlayedFrame(playedID, device: device)
+                    }
+                }
                 status = "\(selected?.name ?? "Vriend") praat…"
             }
         } catch { /* transient audio network drop: next poll retries */ }
+    }
+
+    private func acknowledgePlayedFrame(_ id: Int, device: String) async {
+        guard ready else { return }
+        do {
+            var request = try makeRequest("/v2/frames/ack", method: "POST")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let body = try JSONSerialization.data(withJSONObject: ["ids": [id], "device": device])
+            let (_, response) = try await URLSession.shared.upload(for: request, from: body)
+            try validate(response)
+        } catch { /* 15-second expiry remains a fallback if an ACK is lost */ }
     }
 
     private func flushAudio() async {
