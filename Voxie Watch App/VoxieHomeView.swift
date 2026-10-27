@@ -8,24 +8,12 @@ struct VoxieHomeView: View {
     var body: some View {
         Group {
             if !model.ready {
-                VoxieSignInView()
+                watchSetupPrompt
             } else if !model.hasLoadedProfile {
                 ProgressView("Profiel laden…")
                     .tint(voxieYellow)
             } else if model.username.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "iphone.gen3")
-                        .font(.system(size: 34))
-                        .foregroundStyle(voxieYellow)
-                    Text("STEL VOXIE IN")
-                        .font(.headline)
-                        .foregroundStyle(voxieYellow)
-                    Text("Open Voxie op je iPhone of iPad en kies daar je gebruikersnaam. Daarna verschijnt je profiel hier automatisch.")
-                        .font(.footnote)
-                        .multilineTextAlignment(.center)
-                }
-                .padding()
-                .background(.black)
+                watchSetupPrompt
             } else {
                 TabView {
                     talkingPage
@@ -35,8 +23,34 @@ struct VoxieHomeView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear { model.start() }
+        .onAppear {
+            if !UserDefaults.standard.bool(forKey: "voxie.watchPairedViaPhone") {
+                model.signOut()
+            }
+            VoxieWatchBridge.shared.onSessionChanged = { token in
+                model.acceptWatchSession(token)
+            }
+            VoxieWatchBridge.shared.activate()
+            model.start()
+        }
         .onDisappear { model.stop() }
+    }
+
+    private var watchSetupPrompt: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "iphone.gen3")
+                .font(.system(size: 34))
+                .foregroundStyle(voxieYellow)
+            Text("STEL VOXIE IN OP IPHONE")
+                .font(.headline)
+                .foregroundStyle(voxieYellow)
+                .multilineTextAlignment(.center)
+            Text("Open Voxie op je iPhone en doorloop de installatie. De Watch wordt daarna via je iPhone gekoppeld.")
+                .font(.footnote)
+                .multilineTextAlignment(.center)
+        }
+        .padding()
+        .background(.black)
     }
 
     private var talkingPage: some View {
@@ -51,7 +65,21 @@ struct VoxieHomeView: View {
                         .frame(width: 8, height: 8)
                 }
 
-                if model.friends.isEmpty {
+                if let selected = model.selected {
+                    Button {
+                        model.endSpeaking()
+                        model.selectedFriendID = nil
+                    } label: {
+                        Label("Terug", systemImage: "chevron.left")
+                            .font(.caption)
+                    }
+                    .tint(voxieYellow)
+                    Text("PRATEN MET \(selected.name.uppercased())")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(voxieYellow)
+                        .multilineTextAlignment(.center)
+                    TalkPad()
+                } else if model.friends.isEmpty {
                     Text("Veeg omhoog en nodig een vriend uit")
                         .font(.caption)
                         .multilineTextAlignment(.center)
@@ -83,7 +111,8 @@ struct VoxieHomeView: View {
                     }
                 }
 
-                ForEach(model.pending) { friend in
+                if model.selected == nil {
+                  ForEach(model.pending) { friend in
                     HStack {
                         Image(systemName: "hourglass")
                         Text("@\(friend.name)").lineLimit(1)
@@ -91,9 +120,8 @@ struct VoxieHomeView: View {
                     }
                     .font(.system(size: 10))
                     .foregroundStyle(.gray)
+                  }
                 }
-
-                TalkPad()
                 Text(model.status)
                     .font(.system(size: 10))
                     .multilineTextAlignment(.center)
