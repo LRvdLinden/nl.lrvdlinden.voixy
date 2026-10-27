@@ -13,6 +13,7 @@ struct VoxiePhoneHomeView: View {
     @State private var showFriends = false
     @State private var showSettings = false
     @State private var holding = false
+    @State private var onboardingActive = false
 
     var body: some View {
         ZStack {
@@ -22,8 +23,10 @@ struct VoxiePhoneHomeView: View {
             } else if !model.hasLoadedProfile {
                 ProgressView("Profiel laden…")
                     .tint(Palette.yellow)
-            } else if model.username.isEmpty {
-                PhoneSettingsSheet(onboarding: true)
+            } else if model.username.isEmpty || onboardingActive {
+                PhoneSettingsSheet(onboarding: true, onSetupComplete: {
+                    onboardingActive = false
+                })
             } else {
               ScrollView {
                 VStack(spacing: 20) {
@@ -50,6 +53,12 @@ struct VoxiePhoneHomeView: View {
         .sheet(isPresented: $showFriends) { PhoneFriendsSheet() }
         .sheet(isPresented: $showSettings) { PhoneSettingsSheet() }
         .onAppear { if model.ready { model.start() } }
+        .onChange(of: model.hasLoadedProfile) { _, loaded in
+            if loaded && model.username.isEmpty { onboardingActive = true }
+        }
+        .onChange(of: model.ready) { _, ready in
+            if !ready { onboardingActive = false }
+        }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active: model.start()
@@ -224,6 +233,7 @@ private struct PhoneSettingsSheet: View {
     @EnvironmentObject private var model: VoxieV2Model
     @Environment(\.dismiss) private var dismiss
     var onboarding = false
+    var onSetupComplete: () -> Void = {}
     @State private var handle = ""
     @State private var photo: PhotosPickerItem?
     @State private var isSaving = false
@@ -291,6 +301,18 @@ private struct PhoneSettingsSheet: View {
                     Text("Bepaalt waar inkomende spraak wordt afgespeeld zolang Voxie actief is.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                }
+                if onboarding {
+                    Section {
+                        Button("Start Voxie") { onSetupComplete() }
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .tint(Palette.yellow)
+                            .disabled(model.username.isEmpty || isSaving || savingDelivery)
+                        Text("Sla eerst je gebruikersnaam op en kies hierboven waar je spraak wilt ontvangen.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Section {
                     Text("Je vrienden en profiel worden via je Apple-account op iPhone, iPad en Apple Watch gesynchroniseerd. De Watch heeft geen aparte profielinstellingen.")
