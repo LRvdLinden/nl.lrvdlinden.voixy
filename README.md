@@ -56,7 +56,7 @@ Het iPhone-target gebruikt `com.apple.product-type.application`. De Watch-app ge
 
 ### Eerste configuratie en ontvangstkeuze (build 6)
 
-- Na Apple-aanmelding toont de iPhone/iPad een eenmalige configuratiepagina zolang er geen gebruikersnaam is. Bij volgende starts wordt het profiel eerst geladen; een bestaand profiel opent direct het hoofdscherm.
+- Na Apple-aanmelding toont de iPhone/iPad een eenmalige configuratiepagina zolang er geen gebruikersnaam is. Sla je unieke naam op, kies **Ontvangst** (Watch, iPhone/iPad of beide) en tik pas daarna op **Start Voxie**. De configuratiepagina blijft tijdens deze stappen open. Bij volgende starts wordt het profiel eerst geladen; een bestaand profiel opent direct het hoofdscherm.
 - De Watch toont bij een nog oningesteld profiel een verwijzing naar de iPhone/iPad. Meld de Watch aan met hetzelfde Apple-account om dat profiel te kunnen ophalen; automatische overdracht van aanmeldgegevens via WatchConnectivity is nog niet geïmplementeerd.
 - In iPhone/iPad-instellingen staat **Berichten ontvangen op**: alleen Apple Watch, alleen iPhone/iPad, of beide. Dit wordt per account op de server opgeslagen. De keuze stuurt de **spraakontvangst terwijl de apps open zijn**; achtergrondmeldingen of automatisch afspelen in een gesloten app zijn nog niet aanwezig.
 - Er staat geen extra vast icoon linksboven in de hoofdschermen op iPhone/iPad of Watch; het eigenlijke app-icoon op het beginscherm blijft behouden. Een optionele profielfoto staat afzonderlijk in de profielkaart.
