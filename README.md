@@ -52,7 +52,14 @@ Op de Apple Watch zijn twee pagina's: **Praten** en **Vrienden**. Instellingen, 
 
 De iPhone-app gebruikt een expliciete `Voxie iPhone App/Info.plist` met `UILaunchScreen` en alle vier iPad-schermstanden (`UISupportedInterfaceOrientations~ipad`). Dat is nodig voor iPad-multitaskingvalidatie in App Store Connect. De iPhone ondersteunt portret en beide liggende schermstanden.
 
-Het iPhone-target gebruikt `com.apple.product-type.application`. De Watch-app gebruikt `WKRunsIndependentlyOfCompanionApp = YES` en verwijst met `WKCompanionAppBundleIdentifier` naar de iPhone-app. De Watch blijft hierdoor zelfstandig functioneren, ook wanneer de iPhone-app niet is geïnstalleerd. Beide targets behouden versie `1.0.0`, build `1`.
+Het iPhone-target gebruikt `com.apple.product-type.application`. De Watch-app gebruikt `WKRunsIndependentlyOfCompanionApp = YES` en verwijst met `WKCompanionAppBundleIdentifier` naar de iPhone-app. De Watch kan technisch zelfstandig draaien, maar het Voxie-profiel wordt eerst op de iPhone/iPad ingesteld. Beide targets behouden versie `1.0.0`, build `6`.
+
+### Eerste configuratie en ontvangstkeuze (build 6)
+
+- Na Apple-aanmelding toont de iPhone/iPad een eenmalige configuratiepagina zolang er geen gebruikersnaam is. Bij volgende starts wordt het profiel eerst geladen; een bestaand profiel opent direct het hoofdscherm.
+- De Watch toont bij een nog oningesteld profiel een verwijzing naar de iPhone/iPad. Meld de Watch aan met hetzelfde Apple-account om dat profiel te kunnen ophalen; automatische overdracht van aanmeldgegevens via WatchConnectivity is nog niet geïmplementeerd.
+- In iPhone/iPad-instellingen staat **Berichten ontvangen op**: alleen Apple Watch, alleen iPhone/iPad, of beide. Dit wordt per account op de server opgeslagen. De keuze stuurt de **spraakontvangst terwijl de apps open zijn**; achtergrondmeldingen of automatisch afspelen in een gesloten app zijn nog niet aanwezig.
+- Het gele Voxie-logo is linksboven op iPhone/iPad en Watch zichtbaar; een optionele profielfoto staat afzonderlijk in de profielkaart.
 
 Voor App Store-validatie staat `WKRunsIndependentlyOfCompanionApp` **niet** naast `WKWatchOnly`, want die twee waarden mogen niet beide `YES` zijn. De WidgetKit-extensie bevat daarnaast expliciet `CFBundleDisplayName = Voxie Control`.
 
