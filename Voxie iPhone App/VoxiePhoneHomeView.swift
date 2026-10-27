@@ -16,6 +16,8 @@ struct VoxiePhoneHomeView: View {
     @State private var holding = false
     @State private var handlingInvitationID: Int?
     @State private var invitationFeedback = ""
+    @State private var revealedFriendID: String?
+    @State private var friendToDelete: VoxieFriend?
     @State private var onboardingActive = VoxieCredentialStore.load() == nil
     @State private var onboardingStep = 0
 
@@ -53,6 +55,21 @@ struct VoxiePhoneHomeView: View {
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showFriends) { PhoneFriendsSheet() }
         .sheet(isPresented: $showSettings) { PhoneSettingsSheet() }
+        .confirmationDialog("Vriend verwijderen?",
+                            isPresented: Binding(
+                                get: { friendToDelete != nil },
+                                set: { if !$0 { friendToDelete = nil } }
+                            ), titleVisibility: .visible) {
+            Button("Verwijderen", role: .destructive) {
+                guard let friend = friendToDelete else { return }
+                friendToDelete = nil
+                revealedFriendID = nil
+                Task { await model.removeFriend(friend.id) }
+            }
+            Button("Annuleren", role: .cancel) { friendToDelete = nil }
+        } message: {
+            Text("Wil je @\(friendToDelete?.name ?? "deze vriend") verwijderen?")
+        }
         .confirmationDialog("Vriendschapsverzoek sturen?",
                             isPresented: Binding(
                                 get: { model.ready && model.hasLoadedProfile && !model.username.isEmpty && model.pendingProfileUsername != nil },
@@ -207,8 +224,22 @@ struct VoxiePhoneHomeView: View {
                 .background(Palette.charcoal, in: RoundedRectangle(cornerRadius: 16))
             } else {
                 ForEach(model.friends) { friend in
-                    HStack(spacing: 4) {
+                    ZStack(alignment: .trailing) {
+                        Button {
+                            friendToDelete = friend
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 19, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 66, height: 60)
+                                .background(.red, in: RoundedRectangle(cornerRadius: 14))
+                        }
+                        .accessibilityLabel("Verwijder \(friend.name)")
                      Button {
+                         if revealedFriendID == friend.id {
+                             revealedFriendID = nil
+                             return
+                         }
                          model.selectedFriendID = friend.id
                          showTalk = true
                      } label: {
@@ -239,15 +270,19 @@ struct VoxiePhoneHomeView: View {
                         }
                     }
                     .buttonStyle(.plain)
-                     Button(role: .destructive) {
-                         Task { await model.removeFriend(friend.id) }
-                     } label: {
-                         Image(systemName: "minus.circle")
-                             .foregroundStyle(.red)
-                             .padding(8)
-                     }
-                     .accessibilityLabel("Verwijder \(friend.name)")
+                    .offset(x: revealedFriendID == friend.id ? -74 : 0)
+                    .gesture(
+                        DragGesture(minimumDistance: 24)
+                            .onEnded { gesture in
+                                if gesture.translation.width < -45 {
+                                    withAnimation(.easeOut(duration: 0.2)) { revealedFriendID = friend.id }
+                                } else if gesture.translation.width > 35 {
+                                    withAnimation(.easeOut(duration: 0.2)) { revealedFriendID = nil }
+                                }
+                            }
+                    )
                     }
+                    .clipped()
                 }
             }
         }
@@ -684,6 +719,26 @@ private struct PhoneSettingsSheet: View {
                     }
                     .disabled(savingDelivery)
                     Text("Bepaalt waar inkomende spraak wordt afgespeeld zolang Voxie actief is.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Section("Geluidsvolume") {
+                    HStack {
+                        Image(systemName: "speaker.wave.1")
+                        Slider(
+                            value: Binding(
+                                get: { model.playbackVolume },
+                                set: { model.setPlaybackVolume($0) }
+                            ),
+                            in: 0.1...1.0,
+                            step: 0.05
+                        )
+                        .tint(Palette.yellow)
+                        Image(systemName: "speaker.wave.3.fill")
+                    }
+                    Text("Voxie-volume: \(Int(model.playbackVolume * 100))%")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Standaard maximaal (100%). Dit regelt het volume van Voxie ten opzichte van het systeemvolume. De fysieke volumeknoppen en de geluidsuitvoer van Apple blijven bepalend.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
