@@ -1,6 +1,6 @@
 # Voxie 1.0.0 — iPhone + Apple Watch Walkietalkie
 
-Geel-zwarte iPhone- en Apple Watch-app. Houd de gele knop ingedrukt om maximaal 15 seconden op te nemen; laat los om te verzenden. Wanneer twee apparaten Voxie open hebben en elkaar als vriend hebben toegevoegd, speelt de ontvanger de spraakblokken automatisch af. Het maakt niet uit of een deelnemer een iPhone of Apple Watch gebruikt.
+Geel-zwarte iPhone/iPad-beheerapp en Apple Watch-walkietalkie. Beheer je Apple-account, vrienden en instellingen op iPhone/iPad. Spreken en luisteren kan uitsluitend op Apple Watch: houd daar de gele knop maximaal 15 seconden vast en laat los om je opname te versturen. De ontvanger hoort de spraak automatisch terwijl Voxie actief is op diens Watch.
 
 ## Projectinstellingen
 
@@ -11,7 +11,7 @@ Geel-zwarte iPhone- en Apple Watch-app. Houd de gele knop ingedrukt om maximaal 
 | Widget/Control Bundle ID | `nl.lrvdlinden.Voxie.watchkitapp.control` |
 | Development Team | `EU3UY476T6` |
 | Marketingversie | `1.0.0` |
-| Build | `17` |
+| Build | `18` |
 | Type | iPhone-companion met zelfstandig werkende Watch-app |
 | Backend | Supabase Edge Function |
 
@@ -33,6 +33,17 @@ Wanneer de eerste migratie al handmatig is uitgevoerd en niet in Supabase's migr
 De server controleert Apple ID-tokens met Apple's ondertekende sleutelset en gebruikt korte, eenmalige login-challenges. Hij bewaart een unieke, niet-hoofdlettergevoelige gebruikersnaam, de gekozen avatar en een vriendenlijst per Apple-account. Na Apple-aanmelding op de iPhone ontvangt de gekoppelde Watch een eigen sessie via WatchConnectivity. Audioframes worden na 30 seconden niet meer opgehaald. Voor publieke lancering zijn aanvullende beveiligingsmaatregelen nodig, zoals rate limiting, sessie-intrekking, quotas, opschoning en een privacybeleid. Audio is HTTPS-versleuteld, maar niet end-to-end-versleuteld.
 
 ## Xcode
+
+### Build 18 — iPhone/iPad uitsluitend beheer; Apple Watch uitsluitend audio
+
+- iPhone en iPad: aanmelden met Apple, profiel en profielfoto beheren, vrienden uitnodigen, accepteren en verwijderen, Watch-volume instellen en accountgegevens beheren. **Geen microfoon, geen afspelen, geen praatknop.** Een tik op een vriend verwijst naar spreken op de Watch.
+- Apple Watch: vrienden kiezen en onder de gele knop spreken. De Watch ontvangt audioframes tijdens een actieve Voxie-sessie. De Watch verstuurt na het loslaten van de knop via de Voxie-server.
+- Het configuratieproces noemt vanaf de eerste welkomslides uitsluitend de Apple Watch als audiotoestel. De zinloze iOS Push to Talk-activatie verdwijnt volledig. Bestaande profielen openen direct het beheerscherm.
+- Backend: audio ophalen en afspeelbevestigen kan alleen voor `device=watch`; bestaande accounts met een oude telefoon-/beide-voorkeur worden als Watch-only behandeld. Een afgespeeld frame wordt na de Watch-bevestiging verwijderd; niet afgespeelde frames verlopen na 30 seconden.
+- Watch-ontvangst: een frame wordt niet meer weggegooid wanneer de vriendenlijst nog bezig is met laden. De iOS-app start geen audio-netwerktaken meer.
+- **OS-beperking:** Apple's `PushToTalk`-framework is hier geen oplossing voor een gesloten Apple Watch-app. watchOS kan apps schorsen en background-pushmeldingen vertragen. Dit project garandeert daarom ontvangst **alleen zolang de Watch-app actief is**. Het automatisch afspelen op een volledig afgesloten Watch is niet gerealiseerd.
+- Validatie: broncode en ZIP kunnen lokaal statisch gecontroleerd worden, maar op deze Linux-omgeving is geen Xcode/watchOS SDK aanwezig om een echte Watch-build of end-to-end gesprek te testen.
+
 
 ### Build 17 — Apple Push to Talk-signing en websitehero
 
