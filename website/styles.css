@@ -23,4 +23,35 @@
 .coming-badge strong{font-size:27px;font-family:'Space Grotesk',sans-serif;font-weight:800}
 .coming-footnote{font-size:12px!important;opacity:.55;margin-top:18px!important}
 .feature-copy li{padding-left:18px;border-left:3px solid var(--yellow)}
+
+/* Fictional, deliberately labeled product previews for iPhone and Apple Watch. */
+.phone-device{padding:24px 16px 18px;overflow:hidden;background:#070708;width:280px;height:575px;transform:rotate(-6deg) translate(-40px,-12px);border:7px solid #343436}
+.phone-device::before{display:block;top:7px;height:18px;width:83px;left:calc(50% - 41px)}
+.phone-top{margin:0 2px 24px;font-size:10px;position:relative;z-index:1}
+.phone-signal{letter-spacing:1px}
+.phone-brand{font-size:32px;font-weight:800;letter-spacing:-1.8px;line-height:1}
+.phone-brand span{color:var(--yellow)}
+.phone-tagline{margin-top:4px;font-size:9px;font-weight:800;letter-spacing:2.5px;color:var(--yellow)}
+.phone-user-card{background:#19191c;border-radius:15px;padding:18px 15px;margin-top:32px;display:flex;align-items:flex-start;flex-direction:column;gap:7px;position:relative}
+.phone-user-card small{font-size:9px;letter-spacing:1.6px;color:#aaa;font-weight:800}
+.phone-user-card strong{font-size:22px;font-weight:800;color:var(--yellow)}
+.phone-user-card .phone-online{position:absolute;right:12px;bottom:15px;color:#111;background:var(--yellow);font-weight:900;font-size:7px;border-radius:20px;padding:5px 7px}
+.phone-friends-title{display:flex;align-items:center;justify-content:space-between;margin:23px 0 13px;font-size:13px;letter-spacing:.6px;font-weight:900}
+.phone-friends-title small{font-size:8px;color:var(--yellow);font-weight:800;letter-spacing:0}
+.friend-preview{background:#1b1b1d;margin-bottom:9px;padding:11px;border:1px solid #303032}
+.friend-preview.selected{color:#fff;background:#202023;border-color:var(--yellow);box-shadow:0 0 0 1px var(--yellow)}
+.friend-preview .avatar{background:var(--yellow);color:#111}
+.friend-preview small{color:#aaa}
+.friend-preview .friend-dot{width:8px;height:8px}
+.phone-instruction{margin-top:24px;letter-spacing:1px;font-size:8px;color:#a9a9a9}
+.watch-device{right:1%;bottom:105px;transform:rotate(8deg)}
+.watch-body{background:#080809}
+.watch-top{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:800;letter-spacing:-.5px;color:#fff}
+.watch-top span{margin-left:0;font-size:inherit;color:var(--yellow)}
+.watch-name{color:#fff;font-size:12px;letter-spacing:1.4px;margin-top:13px}
+.watch-talk{display:flex;align-items:center;justify-content:center;gap:3px;margin-top:8px}
+.watch-talk i{display:block;background:#111;border-radius:5px;width:5px;height:21px}
+.watch-talk i:nth-child(2),.watch-talk i:nth-child(4){height:34px}
+.watch-talk i:nth-child(3){height:48px}
+.art-caption{font-size:9px;letter-spacing:2px;color:#9d9d9d}
 @media(prefers-reduced-motion:no-preference){.button,.nav-button{transition:transform .2s ease,background .2s ease}.live-indicator{animation:pulse 2.5s infinite}@keyframes pulse{50%{box-shadow:0 0 0 9px #ffd90009}}}
