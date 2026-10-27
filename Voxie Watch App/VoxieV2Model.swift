@@ -73,7 +73,6 @@ final class VoxieV2Model: ObservableObject {
     private var holding = false
     private var maxRecordingTask: Task<Void, Never>?
     private var sendFailures = 0
-    private var notifyOnNextFrame = false
     private var transmitRecipientID: String?
     private var flushNotBefore = Date.distantPast
 
@@ -341,7 +340,6 @@ final class VoxieV2Model: ObservableObject {
         let hadSpeech = isSpeaking
         isSpeaking = false
         if hadSpeech {
-            notifyOnNextFrame = true
             // Let the AVAudioEngine tap deliver its final PCM buffer before
             // draining the queue; the finger release and tap can race.
             flushNotBefore = Date().addingTimeInterval(0.25)
@@ -444,12 +442,11 @@ final class VoxieV2Model: ObservableObject {
             if large.count > 32768 { outgoing.insert(Data(large.dropFirst(32768)), at: 0) }
         }
         do {
-            let request = try makeRequest("/v2/frames/\(recipient)" + (notifyOnNextFrame ? "?begin=1" : ""), method: "POST")
+            let request = try makeRequest("/v2/frames/\(recipient)", method: "POST")
             var upload = request
             upload.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             let (_, response) = try await URLSession.shared.upload(for: upload, from: chunk)
             try validate(response)
-            notifyOnNextFrame = false
             sendFailures = 0
             if outgoing.isEmpty {
                 status = "Verzonden ✓"
