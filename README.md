@@ -68,6 +68,13 @@ Op iPhone loopt de eerste installatie door zeven stappen: welkom (met veegbare i
 
 Op de Watch is **geen Log in met Apple**-scherm meer beschikbaar. De iPhone vraagt met zijn bestaande sessie een aparte Watch-sessie aan bij de server (`POST /v3/watch-session`) en draagt deze via Apple's WatchConnectivity over aan de gekoppelde Watch. De Watch slaat die lokaal op in de Keychain. Zolang dat niet gebeurd is, toont de Watch alleen de verwijzing naar de iPhone. Hiervoor moet de Watch gekoppeld zijn aan de iPhone en WatchConnectivity de context kunnen bezorgen; de overdracht kan enige tijd duren. Op een iPad kan niet rechtstreeks een Apple Watch worden gekoppeld.
 
+### Vrienden en geluid (build 12)
+
+- iPhone/iPad: veeg een vriend naar links om een rode verwijderknop te tonen; verwijderen vraagt bevestiging. Er staat geen vaste verwijderknop meer naast iedere vriend.
+- Instellingen op iPhone/iPad: Voxie-afspeelvolume van 10–100%, standaard 100%. De keuze wordt lokaal onthouden en via WatchConnectivity met een gekoppelde Apple Watch gedeeld.
+- Het appvolume kan het fysieke systeemvolume niet verhogen of de hardware-volumeknoppen omzeilen.
+- Spraak ontvangen bij een **gesloten** app is nog **niet geïmplementeerd**. Daarvoor is Apple's Push to Talk-framework met kanaalregistratie, APNs Push to Talk-notificaties, Apple-capabilities en extra serverimplementatie nodig. De huidige voorgrondpolling is daarvoor onvoldoende. iOS kan een app achtergronds activeren voor PTT-audio maar mag hem niet zonder gebruikersactie naar de voorgrond brengen.
+
 ### Vriendschapsverzoeken op het beginscherm (build 11)
 
 - Nieuwe inkomende verzoeken verschijnen direct in een geel blok op het iPhone/iPad-beginscherm, met Accepteren en Weigeren.
