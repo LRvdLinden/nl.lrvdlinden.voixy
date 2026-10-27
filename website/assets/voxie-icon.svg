@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Voxie">
-  <rect width="512" height="512" rx="118" fill="#ffd900"/>
-  <g stroke="#111" stroke-width="31" stroke-linecap="round">
-    <path d="M256 115v282"/>
-    <path d="M184 167v178"/>
-    <path d="M328 167v178"/>
-    <path d="M113 218v76"/>
-    <path d="M399 218v76"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Voxie">
+  <rect width="1024" height="1024" fill="#080809"/>
+  <g fill="#ffda00">
+    <rect x="304" y="441" width="64" height="142" rx="32"/>
+    <rect x="391" y="343" width="64" height="338" rx="32"/>
+    <rect x="478" y="282" width="64" height="460" rx="32"/>
+    <rect x="565" y="362" width="64" height="300" rx="32"/>
+    <rect x="652" y="427" width="64" height="170" rx="32"/>
   </g>
 </svg>
