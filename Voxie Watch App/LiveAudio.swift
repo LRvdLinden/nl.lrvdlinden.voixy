@@ -27,7 +27,8 @@ final class LiveAudio {
     func prepare() throws {
         let session = AVAudioSession.sharedInstance()
         #if os(iOS)
-        // Walkietalkie audio should play from the iPhone speaker by default.
+        // .playAndRecord bypasses the Ring/Silent switch, including when locked.
+        // Route speech to the speaker by default without modifying system volume.
         try session.setCategory(.playAndRecord, mode: .voiceChat,
                                 options: [.defaultToSpeaker, .allowBluetooth])
         #else
@@ -88,9 +89,11 @@ final class LiveAudio {
                                            frameCapacity: AVAudioFrameCount(count)),
               let channel = output.floatChannelData?[0] else { return }
         output.frameLength = AVAudioFrameCount(count)
-        pcm.withUnsafeBytes { bytes in
-            guard let source = bytes.bindMemory(to: Int16.self).baseAddress else { return }
-            for n in 0..<count { channel[n] = Float(source[n]) / 32768 }
+        // Decode little-endian PCM16 without assuming Data has Int16 alignment.
+        let bytes = [UInt8](pcm)
+        for n in 0..<count {
+            let sample = UInt16(bytes[n * 2]) | (UInt16(bytes[n * 2 + 1]) << 8)
+            channel[n] = Float(Int16(bitPattern: sample)) / 32768
         }
         player.scheduleBuffer(output, completionCallbackType: .dataPlayedBack) { _ in
             onPlayed()
