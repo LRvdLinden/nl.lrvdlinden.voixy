@@ -50,6 +50,7 @@ final class VoxieV2Model: ObservableObject {
     @Published private(set) var hasLoadedProfile = false
     @Published private(set) var avatarBase64: String?
     @Published private(set) var deliveryTarget = "both"
+    @Published var pendingProfileUsername: String?
     @Published private(set) var code = ""
     @Published private(set) var status = "Log in met Apple"
     @Published private(set) var friends: [VoxieFriend] = []
@@ -179,8 +180,22 @@ final class VoxieV2Model: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "voxie.watchPairedViaPhone")
         #endif
         username = ""; avatarBase64 = nil; deliveryTarget = "both"
+        pendingProfileUsername = nil
         hasLoadedProfile = false; code = ""; friends = []; pending = []; invitations = []
         selectedFriendID = nil; status = "Log in met Apple"
+    }
+
+    func openSharedProfile(_ url: URL) {
+        let handle: String
+        if url.scheme?.lowercased() == "https", url.host?.lowercased() == "voxie.online",
+           url.pathComponents.count == 3, url.pathComponents[1] == "u" {
+            handle = url.pathComponents[2]
+        } else if url.scheme?.lowercased() == "voxie", url.host?.lowercased() == "u",
+                  url.pathComponents.count == 2 {
+            handle = url.pathComponents[1]
+        } else { return }
+        guard handle.range(of: "^[a-zA-Z0-9_]{3,20}$", options: .regularExpression) != nil else { return }
+        pendingProfileUsername = handle.lowercased()
     }
 
     func deleteAccount() async -> Bool {
