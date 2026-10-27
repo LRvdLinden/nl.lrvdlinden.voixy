@@ -12,6 +12,11 @@
     <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
     <key>LSRequiresIPhoneOS</key><true/>
+    <key>CFBundleURLTypes</key>
+    <array><dict>
+        <key>CFBundleURLName</key><string>nl.lrvdlinden.Voxie</string>
+        <key>CFBundleURLSchemes</key><array><string>voxie</string></array>
+    </dict></array>
     <key>LSApplicationCategoryType</key><string>public.app-category.social-networking</string>
     <key>NSMicrophoneUsageDescription</key><string>Voxie gebruikt de microfoon voor gesproken berichten aan vrienden.</string>
     <key>UILaunchScreen</key><dict/>
