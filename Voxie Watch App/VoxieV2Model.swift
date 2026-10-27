@@ -181,7 +181,7 @@ final class VoxieV2Model: ObservableObject {
     #endif
 
     func signOut() {
-        stop(); VoxieCredentialStore.clear(); token = ""; identity = ""
+        stop(); outgoing.removeAll(); VoxieCredentialStore.clear(); token = ""; identity = ""
         #if os(watchOS)
         UserDefaults.standard.removeObject(forKey: "voxie.watchPairedViaPhone")
         #endif
@@ -244,7 +244,9 @@ final class VoxieV2Model: ObservableObject {
     func stop() {
         refreshTask?.cancel(); audioTask?.cancel(); transmitTask?.cancel()
         refreshTask = nil; audioTask = nil; transmitTask = nil
-        audio.stopCapture(); isSpeaking = false; outgoing.removeAll()
+        // Keep unsent recordings in memory for when the app becomes active again.
+        // A short background transition must never silently discard speech.
+        audio.stopCapture(); isSpeaking = false
         maxRecordingTask?.cancel(); maxRecordingTask = nil
         isSending = false
     }
@@ -363,7 +365,9 @@ final class VoxieV2Model: ObservableObject {
             if let id = selectedFriendID, !friends.contains(where: { $0.id == id }) { selectedFriendID = nil }
         } catch VoxieError.unauthorized {
             signOut()
-        } catch { status = "Netwerk: \(error.localizedDescription)" }
+        } catch {
+            if !isCancellation(error) { status = "Netwerk: \(error.localizedDescription)" }
+        }
     }
 
     private func receiveFrames() async {
@@ -402,7 +406,9 @@ final class VoxieV2Model: ObservableObject {
                 }
                 status = "\(sender.name) praat…"
             }
-        } catch { status = "Ontvangen mislukt: \(error.localizedDescription)" }
+        } catch {
+            if !isCancellation(error) { status = "Ontvangen mislukt: \(error.localizedDescription)" }
+        }
     }
 
     private func acknowledgeFrame(_ id: Int, device: String, phase: String) async {
@@ -441,8 +447,10 @@ final class VoxieV2Model: ObservableObject {
             if outgoing.isEmpty { status = "Verzonden ✓" }
         } catch {
             outgoing.insert(chunk, at: 0)
-            sendFailures += 1
-            status = "Audio niet verzonden (poging \(sendFailures)): \(error.localizedDescription)"
+            if !isCancellation(error) {
+                sendFailures += 1
+                status = "Audio niet verzonden (poging \(sendFailures)): \(error.localizedDescription)"
+            }
         }
         isSending = false
     }
@@ -494,6 +502,10 @@ final class VoxieV2Model: ObservableObject {
         guard let response = response as? HTTPURLResponse, (200...299).contains(response.statusCode) else {
             throw VoxieError.server
         }
+    }
+
+    private func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError || (error as? URLError)?.code == .cancelled
     }
 }
 
