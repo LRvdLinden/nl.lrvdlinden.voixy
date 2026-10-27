@@ -155,6 +155,16 @@ Deno.serve(async (req: Request) => {
   const me = await userFrom(req);
   if (!me) return fail(401, "unauthorized");
 
+  // The authenticated iPhone grants its paired Watch a separate revocable session.
+  // The Watch never invokes Sign in with Apple itself.
+  if (req.method === "POST" && path === "/v3/watch-session") {
+    if (!me.username) return fail(409, "complete setup on iPhone first");
+    const token = randomHex(32);
+    const { error } = await db.from("voxie_sessions")
+      .insert({ token_hash: await sha256(token), user_id: me.id });
+    return error ? fail(503, "watch pairing unavailable") : json(200, { token });
+  }
+
   // Explicit account deletion only. iOS does not notify servers on uninstall.
   // Foreign keys cascade invitations, friendships, sessions and audio frames.
   if (req.method === "DELETE" && path === "/v3/account") {
@@ -311,11 +321,37 @@ Deno.serve(async (req: Request) => {
     if (!Number.isSafeInteger(after)) return fail(400, "invalid cursor");
     await db.from("voxie_users").update({ last_poll: new Date().toISOString() }).eq("id", me.id);
     const cutoff = new Date(Date.now() - 15_000).toISOString();
+    // Opportunistically purge stale frames (including previous app versions).
+    await db.from("voxie_audio_frames").delete().lt("created_at", cutoff);
     const { data, error } = await db.from("voxie_audio_frames")
       .select("id,sender,pcm_base64").eq("recipient", me.id)
       .gt("id", after).gt("created_at", cutoff).order("id").limit(20);
     if (error) return fail(500, "audio fetch failed");
     return json(200, { frames: (data ?? []).map(x => ({ id: x.id, sender: x.sender, pcm: x.pcm_base64 })) });
+  }
+
+  if (req.method === "POST" && path === "/v2/frames/ack") {
+    const input = await bodyJSON(req, 2048);
+    const ids: unknown = input?.ids;
+    const device = input?.device;
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 50 ||
+        !ids.every((id: unknown) => Number.isSafeInteger(id) && Number(id) > 0) ||
+        (device !== "phone" && device !== "watch"))
+      return fail(400, "invalid playback acknowledgement");
+    const key = device === "watch" ? "played_watch" : "played_phone";
+    const { error } = await db.from("voxie_audio_frames")
+      .update({ [key]: true }).eq("recipient", me.id).in("id", ids);
+    if (error) return fail(500, "acknowledgement failed");
+    let removal = db.from("voxie_audio_frames").delete()
+      .eq("recipient", me.id).in("id", ids);
+    if (me.delivery_target === "both") {
+      removal = removal.eq("played_watch", true).eq("played_phone", true);
+    } else {
+      removal = removal.eq(key, true);
+    }
+    const { error: deleteError } = await removal;
+    if (deleteError) return fail(500, "frame deletion failed");
+    return json(200, { ok: true });
   }
 
   const frame = path.match(/^\/v2\/frames\/([a-f0-9-]{36})$/);
