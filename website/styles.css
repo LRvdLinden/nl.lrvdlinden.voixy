@@ -64,3 +64,23 @@
 .watch-body::after{width:13px;right:-19px;background:repeating-linear-gradient(0deg,#69696d 0 2px,#99999b 2px 3px)}
 @media(max-width:430px){.nav-actions{gap:7px}.language-switch{padding:10px}.nav-button{font-size:10px;padding:10px 9px;white-space:nowrap}}
 
+/* Weekdot-inspired overlapping physical device mock-ups. UI is still the original Voxie HTML, not generated screen artwork. */
+.hero-art{height:700px;overflow:visible}
+.ipad-device{position:absolute;z-index:0;top:92px;left:-103px;width:455px;height:319px;padding:11px;border:2px solid #6a6a70;border-radius:29px;background:linear-gradient(145deg,#878790 0%,#323237 18%,#161619 66%,#a4a4a9 100%);transform:rotate(-8deg);box-shadow:0 25px 55px #000d,0 0 0 2px #1c1c1e,inset 0 0 0 1px #c8c8ca66}
+.ipad-device::after{content:"";position:absolute;width:3px;height:53px;top:-2px;right:69px;border-radius:3px;background:linear-gradient(90deg,#2d2d30,#97979c)}
+.ipad-camera{position:absolute;top:5px;left:50%;height:4px;width:4px;border-radius:50%;background:radial-gradient(circle,#596071,#0c0d11);z-index:2}
+.ipad-screen{background:#070708;border:2px solid #0b0b0e;border-radius:19px;width:100%;height:100%;overflow:hidden;padding:13px 18px;color:#fff;box-shadow:inset 0 0 0 1px #4f4f5477}
+.ipad-topline{font-size:8px;color:#eee;font-weight:800;display:flex;justify-content:space-between;align-items:center;margin-bottom:22px}
+.ipad-battery{display:inline-block;width:16px;height:7px;border:1px solid #ddd;border-radius:2px;vertical-align:middle;margin-left:6px;position:relative}.ipad-battery::after{content:"";position:absolute;inset:1px 2px;background:#e8e8e9}
+.ipad-screen-content{display:flex;gap:17px;height:220px}.ipad-sidebar{width:125px;border-right:1px solid #29292b;padding-right:13px;display:flex;flex-direction:column;gap:12px}.ipad-brand{font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:800;letter-spacing:-1px;margin-bottom:25px}.ipad-brand>span{color:var(--yellow)}.ipad-menu-active,.ipad-menu{font-size:9px;letter-spacing:1px;font-weight:800;padding:10px;border-radius:8px}.ipad-menu-active{background:var(--yellow);color:#101010}.ipad-menu{color:#999}
+.ipad-main{flex:1;display:flex;flex-direction:column;gap:10px}.ipad-main>small{font-size:8px;letter-spacing:2px;color:var(--yellow);font-weight:800}.ipad-main>strong{font-size:20px;margin-bottom:4px}.ipad-person{display:flex;align-items:center;gap:10px;border:1px solid #323234;border-radius:11px;padding:10px;font-size:12px;font-weight:800;background:#19191c}.ipad-person .avatar{height:28px;width:28px;font-size:12px;background:var(--yellow);color:#111}.ipad-person i{width:7px;height:7px;background:var(--yellow);border-radius:50%;margin-left:auto}
+.hero-art .phone-device{z-index:2;transform:rotate(-3deg) translate(62px,52px);border-color:#66676d;box-shadow:0 52px 84px #000d,inset 0 0 0 2px #e1e1e166,0 0 0 2px #28282b,5px 5px 12px #0008}
+.hero-art .phone-device::after{background:linear-gradient(90deg,#323235,#c1c1c5,#43434a);width:4px;left:-11px}
+.hero-art .watch-device{z-index:3;bottom:53px;right:-5%;transform:rotate(6deg);filter:drop-shadow(4px 26px 24px #000e)}
+.hero-art .watch-body{border:10px solid #77787d;box-shadow:0 0 0 3px #272729,inset 0 0 0 2px #bbbcc1,0 10px 18px #000b}
+.hero-art .watch-device::before,.hero-art .watch-device::after{background:linear-gradient(90deg,#1b1b1e,#49494c 52%,#18181a);border-color:#464649;box-shadow:inset 3px 0 7px #0008}
+.hero-art .art-caption{z-index:4;bottom:-12px;right:0;text-align:right;font-size:9px}
+@media(max-width:1100px){.hero-art .ipad-device{left:-130px}.hero-art .watch-device{right:-15%}}
+@media(max-width:790px){.hero-art{height:600px;transform:scale(.75);transform-origin:top center;margin-bottom:-120px}.hero-art .ipad-device{left:-65px}.hero-art .watch-device{right:-1%}}
+@media(max-width:430px){.hero-art{height:560px;transform:scale(.56);width:165%;margin-left:-33%;margin-bottom:-190px}.hero-art .ipad-device{left:5px}.hero-art .watch-device{right:3%}.hero-art .art-caption{bottom:4px;right:0;letter-spacing:1.1px}}
+

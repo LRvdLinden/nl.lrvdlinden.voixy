@@ -14,6 +14,7 @@
     'GEMAAKT VOOR':'BUILT FOR','JOUW PROFIEL':'YOUR PROFILE','BESCHIKBAAR':'AVAILABLE','VRIENDEN':'FRIENDS','UITNODIGEN':'INVITE',
     'Beschikbaar':'Available','KIES EEN VRIEND OM TE PRATEN':'SELECT A FRIEND TO TALK','HOUD VAST':'PRESS AND HOLD',
     'CONCEPTSCHERMEN · IPHONE EN APPLE WATCH':'CONCEPT SCREENS · IPHONE AND APPLE WATCH',
+    'CONCEPTSCHERMEN · IPHONE · IPAD · APPLE WATCH':'CONCEPT SCREENS · IPHONE · IPAD · APPLE WATCH',
     '01 / ZO WERKT HET':'01 / HOW IT WORKS','Minder tikken.':'Less typing.','Meer zeggen.':'More talking.',
     'Een gesprek beginnen zou niet moeilijker moeten zijn dan op een knop drukken.':'Starting a conversation should be as simple as pressing a button.',
     'Vind je mensen.':'Find your people.','Maak een profiel met je eigen unieke gebruikersnaam. Nodig vrienden uit via hun naam of een persoonlijke profiellink.':'Create a profile with a unique username. Invite friends by username or a personal profile link.',
