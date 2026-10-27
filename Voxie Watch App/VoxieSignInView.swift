@@ -14,11 +14,13 @@ struct VoxieSignInView: View {
             Text("VOXIE")
                 .font(.system(size: 23, weight: .black, design: .rounded))
                 .foregroundStyle(.yellow)
-            #if os(watchOS)
-            Text("Stel Voxie eerst in op je iPhone of iPad. Meld je daarna hier aan met hetzelfde Apple-account.")
-            #else
-            Text("Log in om met vrienden te praten")
-            #endif
+            Group {
+                #if os(watchOS)
+                Text("Stel Voxie eerst in op je iPhone of iPad. Meld je daarna hier aan met hetzelfde Apple-account.")
+                #else
+                Text("Log in om met vrienden te praten")
+                #endif
+            }
                 .font(.footnote)
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
