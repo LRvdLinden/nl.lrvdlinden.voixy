@@ -60,9 +60,8 @@ struct VoxieHomeView: View {
         ScrollView {
             VStack(spacing: 10) {
                 HStack {
-                    Text("VOXIE").tracking(2)
+                    (Text("voxie").foregroundColor(.white) + Text(".").foregroundColor(voxieYellow))
                         .font(.system(size: 15, weight: .black, design: .rounded))
-                        .foregroundStyle(voxieYellow)
                     Spacer()
                     Circle().fill(model.available ? voxieYellow : .gray)
                         .frame(width: 8, height: 8)
