@@ -6,4 +6,7 @@
   <key>com.apple.developer.associated-domains</key>
   <array><string>applinks:voxie.online</string></array>
   <key>com.apple.developer.push-to-talk</key><true/>
+  <!-- The signed app must contain this APNs environment, not only the PTT entitlement.
+       The build configuration chooses development (Xcode) or production (TestFlight). -->
+  <key>aps-environment</key><string>$(APS_ENVIRONMENT)</string>
 </dict></plist>
