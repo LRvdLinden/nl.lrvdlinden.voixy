@@ -23,10 +23,10 @@ struct VoxiePendingFriend: Decodable, Identifiable {
 private struct AppleNonceReply: Decodable { let nonce: String }
 private struct AppleLoginReply: Decodable {
     let id: String; let token: String; let code: String
-    let username: String?; let avatar: String?
+    let username: String?; let avatar: String?; let deliveryTarget: String?
 }
 private struct ProfileReply: Decodable {
-    let ok: Bool; let username: String?; let avatar: String?
+    let ok: Bool; let username: String?; let avatar: String?; let deliveryTarget: String?
 }
 private struct StateReply: Decodable {
     let id: String
@@ -36,6 +36,7 @@ private struct StateReply: Decodable {
     let invitations: [VoxieInvitation]
     let username: String?
     let avatar: String?
+    let deliveryTarget: String?
 }
 private struct FrameReply: Decodable { let frames: [VoxieFrame] }
 private struct VoxieFrame: Decodable { let id: Int; let sender: String; let pcm: String }
@@ -45,7 +46,9 @@ private struct Body: Encodable { let name: String?; let code: String?; let avail
 final class VoxieV2Model: ObservableObject {
     @Published var server = SupabaseConfiguration.functionURL
     @Published private(set) var username = ""
+    @Published private(set) var hasLoadedProfile = false
     @Published private(set) var avatarBase64: String?
+    @Published private(set) var deliveryTarget = "both"
     @Published private(set) var code = ""
     @Published private(set) var status = "Log in met Apple"
     @Published private(set) var friends: [VoxieFriend] = []
@@ -96,6 +99,8 @@ final class VoxieV2Model: ObservableObject {
             let result = try JSONDecoder().decode(AppleLoginReply.self, from: data)
             token = result.token; identity = result.id; code = result.code
             username = result.username ?? ""; avatarBase64 = result.avatar
+            deliveryTarget = result.deliveryTarget ?? "both"
+            hasLoadedProfile = true
             VoxieCredentialStore.save(token)
             status = username.isEmpty ? "Kies je gebruikersnaam op iPhone/iPad" : "Verbonden als @\(username)"
             if let pushToken { await uploadPushToken(pushToken) }
@@ -127,9 +132,20 @@ final class VoxieV2Model: ObservableObject {
         } catch { status = error.localizedDescription; return false }
     }
 
+    func updateDeliveryTarget(_ value: String) async -> Bool {
+        guard ["watch", "phone", "both"].contains(value) else { return false }
+        do {
+            let reply: ProfileReply = try await sendJSONObject("/v3/profile", value: ["deliveryTarget": value])
+            deliveryTarget = reply.deliveryTarget ?? value
+            status = "Ontvangst ingesteld"
+            return true
+        } catch { status = "Ontvangst: \(error.localizedDescription)"; return false }
+    }
+
     func signOut() {
         stop(); VoxieCredentialStore.clear(); token = ""; identity = ""
-        username = ""; avatarBase64 = nil; code = ""; friends = []; pending = []; invitations = []
+        username = ""; avatarBase64 = nil; deliveryTarget = "both"
+        hasLoadedProfile = false; code = ""; friends = []; pending = []; invitations = []
         selectedFriendID = nil; status = "Log in met Apple"
     }
 
@@ -252,6 +268,8 @@ final class VoxieV2Model: ObservableObject {
             code = result.code
             username = result.username ?? ""
             avatarBase64 = result.avatar
+            deliveryTarget = result.deliveryTarget ?? "both"
+            hasLoadedProfile = true
             friends = result.friends
             pending = result.pending
             invitations = result.invitations
@@ -262,7 +280,12 @@ final class VoxieV2Model: ObservableObject {
     private func receiveFrames() async {
         guard ready else { return }
         do {
-            let response: FrameReply = try await get("/v2/frames?after=\(cursor)")
+            #if os(watchOS)
+            let device = "watch"
+            #else
+            let device = "phone"
+            #endif
+            let response: FrameReply = try await get("/v2/frames?after=\(cursor)&device=\(device)")
             for frame in response.frames {
                 cursor = max(cursor, frame.id)
                 guard available, !isSpeaking, frame.sender == selectedFriendID,
