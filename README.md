@@ -70,6 +70,9 @@ Op de Watch is **geen Log in met Apple**-scherm meer beschikbaar. De iPhone vraa
 
 ### Vrienden en geluid (build 12)
 
+- Branding: het woordmerk is nu **voxie.** op iPhone en Apple Watch, in dezelfde stijl als de website.
+- Appicon: zwarte achtergrond met vijf gele geluidsbalken op beide apparaten.
+- Website: echte Voxie-iPhone-screenshot in het toestelmockup (profielfoto voor privacy afgedekt), geen verzonnen Watch-schermen of emoji’s; App Store als duidelijke ‘binnenkort’-aankondiging zonder niet-bestaande downloadlink.
 - iPhone/iPad: veeg een vriend naar links om een rode verwijderknop te tonen; verwijderen vraagt bevestiging. Er staat geen vaste verwijderknop meer naast iedere vriend.
 - Instellingen op iPhone/iPad: Voxie-afspeelvolume van 10–100%, standaard 100%. De keuze wordt lokaal onthouden en via WatchConnectivity met een gekoppelde Apple Watch gedeeld.
 - Het appvolume kan het fysieke systeemvolume niet verhogen of de hardware-volumeknoppen omzeilen.
