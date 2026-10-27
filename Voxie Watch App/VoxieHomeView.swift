@@ -73,6 +73,11 @@ struct VoxieHomeView: View {
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
                     TalkPad()
+                    Text(model.status)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(model.status.contains("mislukt") || model.status.contains("niet verzonden") ? .red : .gray)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
                     Button {
                         model.endSpeaking()
                         model.selectedFriendID = nil
