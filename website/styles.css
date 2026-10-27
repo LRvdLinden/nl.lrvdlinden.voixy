@@ -11,4 +11,16 @@
 @media(max-width:1100px){.hero{grid-template-columns:1fr 1fr;gap:0}.hero h1{font-size:clamp(50px,5vw,70px)}.hero-art{transform:scale(.85)}.watch-device{right:-10%}.feature-section{gap:50px}}
 @media(max-width:790px){.site-nav{height:76px;padding:0 6%}.nav-links{display:none}.nav-button{font-size:10px;padding:11px}.hero{display:flex;flex-direction:column;padding:68px 7% 50px;gap:12px}.hero-copy{width:100%}.hero h1{font-size:clamp(52px,11vw,82px);letter-spacing:-3px;margin-right:0}.hero-art{height:560px;width:100%;transform:scale(.83)}.platforms{margin-top:40px}.steps-section{padding:85px 7%}.section-head{display:block}.section-head h2{margin:20px 0}.section-head>p{margin-top:20px}.steps-grid{grid-template-columns:1fr}.step-card{min-height:auto;padding:27px}.step-icon{margin:25px 0}.feature-section{display:flex;flex-direction:column;padding:75px 7%;gap:55px}.feature-visual{width:100%;height:430px}.feature-copy{width:100%}.quote-strip{padding:70px 5%}.coming-section{padding:110px 7%}.site-footer{flex-wrap:wrap;justify-content:center;text-align:center;padding:50px 7%}}
 @media(max-width:430px){.nav-button{font-size:0;padding:10px 13px}.nav-button span{font-size:15px;margin:0}.hero{padding-top:55px}.hero h1{font-size:52px}.hero-art{transform:scale(.67);height:445px;width:145%;margin-left:-22%}.hero-actions{gap:20px}.launch-label{width:100%}.profile-card{padding:50px 22px}.site-footer>span{width:100%}}
+
+/* Authentic Voxie screenshots replace the earlier conceptual interface mockups. */
+.phone-device{padding:0;overflow:hidden;background:#000;width:280px;height:600px;transform:rotate(-6deg);border:7px solid #343436}
+.phone-device::before{display:none}
+.phone-screen{display:block;width:100%;height:100%;object-fit:fill}
+.privacy-avatar-mask{position:absolute;top:114px;left:22px;width:39px;height:39px;border-radius:50%;background:#18181b;border:2px solid #ffd900}
+.feature-logo{position:relative;z-index:1;width:230px;height:230px;border-radius:50px;transform:rotate(-9deg);box-shadow:20px 30px 30px #0004}
+.coming-badge{display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;background:#111;color:#fff;border:1px solid #606060;border-radius:13px;padding:13px 24px;line-height:1.2;letter-spacing:0;text-transform:none;box-shadow:0 14px 35px #0003;cursor:default}
+.coming-badge .coming-small{font-size:10px;letter-spacing:1.2px;font-weight:700;color:#ddd}
+.coming-badge strong{font-size:27px;font-family:'Space Grotesk',sans-serif;font-weight:800}
+.coming-footnote{font-size:12px!important;opacity:.55;margin-top:18px!important}
+.feature-copy li{padding-left:18px;border-left:3px solid var(--yellow)}
 @media(prefers-reduced-motion:no-preference){.button,.nav-button{transition:transform .2s ease,background .2s ease}.live-indicator{animation:pulse 2.5s infinite}@keyframes pulse{50%{box-shadow:0 0 0 9px #ffd90009}}}
