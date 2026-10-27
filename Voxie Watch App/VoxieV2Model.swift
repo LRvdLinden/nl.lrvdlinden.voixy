@@ -270,13 +270,19 @@ final class VoxieV2Model: ObservableObject {
         } catch { /* notification support is optional; foreground calling still works */ }
     }
 
-    func respond(invitation: Int, accept: Bool) async {
+    @discardableResult
+    func respond(invitation: Int, accept: Bool) async -> Bool {
         do {
             let path = "/v2/invitations/\(invitation)/" + (accept ? "accept" : "decline")
             let _: OkReply = try await send(path, body: Body(name: nil, code: nil, available: nil))
             status = accept ? "Vriend toegevoegd" : "Uitnodiging geweigerd"
             await refresh()
-        } catch { status = "Antwoord: \(error.localizedDescription)" }
+            return true
+        } catch {
+            status = "Vriendschapsverzoek: \(error.localizedDescription)"
+            await refresh()
+            return false
+        }
     }
 
     func setAvailable(_ value: Bool) {
@@ -336,6 +342,9 @@ final class VoxieV2Model: ObservableObject {
             friends = result.friends
             pending = result.pending
             invitations = result.invitations
+            if status == "Log in met Apple" || status == "Profiel ophalen van iPhone…" {
+                status = username.isEmpty ? "Rond je profiel af op iPhone/iPad" : "Verbonden als @\(username)"
+            }
             if let id = selectedFriendID, !friends.contains(where: { $0.id == id }) { selectedFriendID = nil }
         } catch VoxieError.unauthorized {
             signOut()
