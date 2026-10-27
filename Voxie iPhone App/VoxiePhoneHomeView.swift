@@ -126,7 +126,12 @@ struct VoxiePhoneHomeView: View {
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active: model.start()
-            case .inactive, .background:
+            case .inactive:
+                // System sheets (including microphone permission) can briefly
+                // deactivate the app. Keep network workers and queued audio alive.
+                holding = false
+                model.endSpeaking()
+            case .background:
                 holding = false
                 model.endSpeaking()
                 model.stop()
