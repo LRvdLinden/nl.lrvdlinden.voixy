@@ -64,12 +64,6 @@ struct VoxiePhoneHomeView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Image(systemName: "waveform")
-                .font(.system(size: 25, weight: .black))
-                .foregroundStyle(.black)
-                .frame(width: 50, height: 50)
-                .background(Palette.yellow, in: RoundedRectangle(cornerRadius: 15))
-                .accessibilityLabel("Voxie-logo")
             VStack(alignment: .leading, spacing: 2) {
                 Text("VOXIE")
                     .tracking(3)
