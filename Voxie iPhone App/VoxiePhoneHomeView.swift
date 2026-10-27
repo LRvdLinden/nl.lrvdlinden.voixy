@@ -12,37 +12,33 @@ struct VoxiePhoneHomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var showFriends = false
     @State private var showSettings = false
+    @State private var showTalk = false
     @State private var holding = false
-    @State private var onboardingActive = false
+    @State private var onboardingActive = VoxieCredentialStore.load() == nil
+    @State private var onboardingStep = 0
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if !model.ready {
-                VoxieSignInView()
+            if !model.ready || onboardingActive || (model.hasLoadedProfile && model.username.isEmpty) {
+                PhoneOnboardingFlow(step: $onboardingStep) {
+                    onboardingActive = false
+                    synchronizeWatch()
+                }
             } else if !model.hasLoadedProfile {
                 ProgressView("Profiel laden…")
                     .tint(Palette.yellow)
-            } else if model.username.isEmpty || onboardingActive {
-                PhoneSettingsSheet(onboarding: true, onSetupComplete: {
-                    onboardingActive = false
-                })
             } else {
               ScrollView {
                 VStack(spacing: 20) {
                     header
                     profileCard
                     friendsList
-                    talkButton
                     Text(model.status)
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(.white.opacity(0.68))
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
-                    Text("Houd de knop ingedrukt om op te nemen. Laat los om te verzenden.")
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.42))
-                        .multilineTextAlignment(.center)
                 }
                 .padding(.horizontal, 22)
                 .padding(.vertical, 22)
@@ -52,12 +48,40 @@ struct VoxiePhoneHomeView: View {
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showFriends) { PhoneFriendsSheet() }
         .sheet(isPresented: $showSettings) { PhoneSettingsSheet() }
-        .onAppear { if model.ready { model.start() } }
+        .sheet(isPresented: $showTalk) {
+            NavigationStack {
+                ScrollView {
+                    talkButton
+                        .padding(.top, 30)
+                        .padding(.horizontal, 20)
+                }
+                .background(.black)
+                .navigationTitle(model.selected?.name ?? "Praten")
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Gereed") { showTalk = false }
+                    }
+                }
+            }
+            .preferredColorScheme(.dark)
+            .onDisappear { model.endSpeaking() }
+        }
+        .onAppear {
+            VoxieWatchBridge.shared.activate()
+            if model.ready { model.start() }
+            if model.ready && model.hasLoadedProfile && !model.username.isEmpty { synchronizeWatch() }
+        }
         .onChange(of: model.hasLoadedProfile) { _, loaded in
             if loaded && model.username.isEmpty { onboardingActive = true }
+            if loaded && !model.username.isEmpty && !onboardingActive { synchronizeWatch() }
         }
         .onChange(of: model.ready) { _, ready in
-            if !ready { onboardingActive = false }
+            if ready && onboardingStep == 2 { onboardingStep = 3 }
+            if !ready {
+                onboardingActive = true
+                onboardingStep = 0
+                VoxieWatchBridge.shared.publish(token: nil)
+            }
         }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
@@ -67,6 +91,14 @@ struct VoxiePhoneHomeView: View {
                 model.endSpeaking()
                 model.stop()
             @unknown default: break
+            }
+        }
+    }
+
+    private func synchronizeWatch() {
+        Task {
+            if let token = await model.createWatchSession() {
+                VoxieWatchBridge.shared.publish(token: token)
             }
         }
     }
@@ -146,7 +178,10 @@ struct VoxiePhoneHomeView: View {
             } else {
                 ForEach(model.friends) { friend in
                     HStack(spacing: 4) {
-                     Button { model.selectedFriendID = friend.id } label: {
+                     Button {
+                         model.selectedFriendID = friend.id
+                         showTalk = true
+                     } label: {
                         HStack(spacing: 12) {
                             if let encoded = friend.avatar,
                                let data = Data(base64Encoded: encoded),
@@ -226,6 +261,247 @@ struct VoxiePhoneHomeView: View {
             .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+private struct PhoneOnboardingFlow: View {
+    @EnvironmentObject private var model: VoxieV2Model
+    @Binding var step: Int
+    let onFinish: () -> Void
+
+    @State private var introPage = 0
+    @State private var handle = ""
+    @State private var photo: PhotosPickerItem?
+    @State private var avatarFeedback = ""
+    @State private var feedback = ""
+    @State private var busy = false
+    @State private var selectedDelivery = "both"
+
+    var body: some View {
+        VStack(spacing: 18) {
+            if step != 2 {
+                Text("VOXIE")
+                    .font(.system(size: 30, weight: .black, design: .rounded))
+                    .tracking(3)
+                    .foregroundStyle(Palette.yellow)
+                    .padding(.top, 25)
+            }
+            Group {
+                switch step {
+                case 0, 1: welcome
+                case 2: VoxieSignInView()
+                case 3: usernameStep
+                case 4: photoStep
+                case 5: deliveryStep
+                default: finishStep
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if step != 2 {
+                Text("\(min(step + 1, 7)) / 7")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.gray)
+                    .padding(.bottom, 12)
+            }
+        }
+        .padding(.horizontal, 22)
+        .background(.black)
+        .preferredColorScheme(.dark)
+        .onAppear {
+            handle = model.username
+            selectedDelivery = model.deliveryTarget
+            if model.ready && step < 3 { step = 3 }
+        }
+        .onChange(of: model.ready) { _, ready in
+            if ready && step == 2 { step = 3 }
+        }
+    }
+
+    private var welcome: some View {
+        VStack(spacing: 20) {
+            TabView(selection: $introPage) {
+                VStack(spacing: 24) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 90, weight: .bold))
+                        .foregroundStyle(Palette.yellow)
+                    Text("Welkom bij Voxie")
+                        .font(.largeTitle.bold())
+                    Text("Praat direct met je vrienden via iPhone, iPad of Apple Watch.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                    Text("Veeg naar links")
+                        .font(.footnote).foregroundStyle(Palette.yellow)
+                }.tag(0)
+                VStack(spacing: 22) {
+                    Image(systemName: "hand.tap.fill")
+                        .font(.system(size: 76))
+                        .foregroundStyle(Palette.yellow)
+                    Text("Houd vast om te praten")
+                        .font(.title.bold())
+                    Text("Nodig eerst vrienden uit. Kies daarna een vriend, houd de knop ingedrukt en laat los om je spraak te verzenden.")
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                }.tag(1)
+            }
+            .tabViewStyle(.page(indexDisplayMode: .always))
+            Button(introPage == 0 ? "Volgende" : "Log in met Apple") {
+                if introPage == 0 { introPage = 1 }
+                else { step = 2 }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Palette.yellow)
+            .foregroundStyle(.black)
+            .controlSize(.large)
+        }
+    }
+
+    private var usernameStep: some View {
+        VStack(spacing: 22) {
+            Text("Kies je gebruikersnaam")
+                .font(.title.bold())
+            Text("Je vrienden kunnen je vinden met deze unieke naam.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            TextField("Gebruikersnaam", text: $handle)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .textContentType(.nickname)
+                .padding(15)
+                .background(Palette.charcoal, in: RoundedRectangle(cornerRadius: 14))
+            Button("Gebruikersnaam opslaan") {
+                Task {
+                    busy = true
+                    let saved = await model.updateUsername(handle)
+                    feedback = saved ? "Opgeslagen ✓" : model.status
+                    busy = false
+                    if saved { step = 4 }
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Palette.yellow)
+            .foregroundStyle(.black)
+            .disabled(busy || handle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Text(feedback).font(.footnote).foregroundStyle(.orange)
+        }
+    }
+
+    private var photoStep: some View {
+        VStack(spacing: 22) {
+            Text("Jouw profielfoto")
+                .font(.title.bold())
+            Text("Voeg een foto toe zodat vrienden je herkennen. Je kunt dit ook later doen.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            if let encoded = model.avatarBase64,
+               let data = Data(base64Encoded: encoded),
+               let picture = UIImage(data: data) {
+                Image(uiImage: picture)
+                    .resizable().scaledToFill()
+                    .frame(width: 128, height: 128)
+                    .clipShape(Circle())
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 115))
+                    .foregroundStyle(Palette.yellow)
+            }
+            PhotosPicker(selection: $photo, matching: .images) {
+                Label("Kies profielfoto", systemImage: "photo")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Palette.yellow)
+            .foregroundStyle(.black)
+            Text(avatarFeedback).font(.footnote).foregroundStyle(.orange)
+            Button(model.avatarBase64 == nil ? "Overslaan" : "Verder") { step = 5 }
+                .disabled(busy)
+                .foregroundStyle(Palette.yellow)
+        }
+        .onChange(of: photo) { _, selected in
+            Task {
+                busy = true
+                guard let data = try? await selected?.loadTransferable(type: Data.self),
+                      let picture = UIImage(data: data) else {
+                    avatarFeedback = "Foto kon niet worden geladen"
+                    busy = false
+                    return
+                }
+                let size = CGSize(width: 256, height: 256)
+                let image = UIGraphicsImageRenderer(size: size).image { _ in
+                    let scale = max(size.width / picture.size.width, size.height / picture.size.height)
+                    let width = picture.size.width * scale
+                    let height = picture.size.height * scale
+                    picture.draw(in: CGRect(x: (size.width-width)/2, y: (size.height-height)/2,
+                                            width: width, height: height))
+                }
+                if let jpeg = image.jpegData(compressionQuality: 0.5) {
+                    let saved = await model.updateAvatar(jpeg)
+                    avatarFeedback = saved ? "Foto opgeslagen ✓" : model.status
+                }
+                busy = false
+            }
+        }
+    }
+
+    private var deliveryStep: some View {
+        VStack(spacing: 22) {
+            Text("Waar wil je spraak ontvangen?")
+                .font(.title.bold())
+                .multilineTextAlignment(.center)
+            ForEach(["watch", "phone", "both"], id: \.self) { choice in
+                Button {
+                    selectedDelivery = choice
+                } label: {
+                    HStack {
+                        Text(deliveryLabel(choice))
+                        Spacer()
+                        Image(systemName: selectedDelivery == choice ? "checkmark.circle.fill" : "circle")
+                    }
+                    .padding(16)
+                    .background(Palette.charcoal, in: RoundedRectangle(cornerRadius: 14))
+                }
+                .foregroundStyle(selectedDelivery == choice ? Palette.yellow : .white)
+            }
+            Button("Keuze opslaan") {
+                Task {
+                    busy = true
+                    let saved = await model.updateDeliveryTarget(selectedDelivery)
+                    feedback = saved ? "" : model.status
+                    busy = false
+                    if saved { step = 6 }
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Palette.yellow)
+            .foregroundStyle(.black)
+            .disabled(busy)
+            Text(feedback).font(.footnote).foregroundStyle(.orange)
+        }
+    }
+
+    private func deliveryLabel(_ value: String) -> String {
+        switch value {
+        case "watch": return "Alleen Apple Watch"
+        case "phone": return "Alleen iPhone/iPad"
+        default: return "Beide apparaten"
+        }
+    }
+
+    private var finishStep: some View {
+        VStack(spacing: 22) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 95))
+                .foregroundStyle(Palette.yellow)
+            Text("Voxie is ingesteld!")
+                .font(.largeTitle.bold())
+            Text("Je kunt nu vrienden uitnodigen. Ook je Apple Watch wordt via je iPhone gekoppeld.")
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Start Voxie") { onFinish() }
+                .buttonStyle(.borderedProminent)
+                .tint(Palette.yellow)
+                .foregroundStyle(.black)
+                .controlSize(.large)
+        }
     }
 }
 
