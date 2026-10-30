@@ -70,6 +70,9 @@ final class VoxieV2Model: ObservableObject {
     private var cursor = 0
     private let audio = LiveAudio()
     private var outgoing: [Data] = []
+    /// When the button for the current outgoing message was released. The server discards
+    /// audio after 30 seconds, so older speech is dropped instead of retried.
+    private var outgoingStartedAt = Date.distantPast
     private var holding = false
     private var maxRecordingTask: Task<Void, Never>?
     private var sendFailures = 0
@@ -169,19 +172,30 @@ final class VoxieV2Model: ObservableObject {
             signOut()
             return
         }
-        guard token != pairedToken else { return }
-        stop()
+        guard token != pairedToken else { start(); return }
+        let wasReady = ready
+        // Swap the credential in place: every request reads `token`, so running
+        // loops (and an in-progress recording) continue uninterrupted.
         token = pairedToken
         VoxieCredentialStore.save(pairedToken)
         UserDefaults.standard.set(true, forKey: "voxie.watchPairedViaPhone")
-        hasLoadedProfile = false
-        status = "Profiel ophalen van iPhone…"
+        if !wasReady {
+            hasLoadedProfile = false
+            status = "Profiel ophalen van iPhone…"
+        }
         start()
+    }
+
+    /// Pairing progress reported by the WatchConnectivity bridge.
+    func setPairingStatus(_ text: String) {
+        guard !ready else { return }
+        status = text
     }
     #endif
 
     func signOut() {
         stop(); outgoing.removeAll(); VoxieCredentialStore.clear(); token = ""; identity = ""
+        holding = false
         transmitRecipientID = nil
         #if os(watchOS)
         UserDefaults.standard.removeObject(forKey: "voxie.watchPairedViaPhone")
@@ -249,6 +263,8 @@ final class VoxieV2Model: ObservableObject {
         refreshTask = nil; audioTask = nil; transmitTask = nil
         // Keep unsent recordings in memory for when the app becomes active again.
         // A short background transition must never silently discard speech.
+        if isSpeaking { outgoingStartedAt = Date() }
+        holding = false
         audio.stopCapture(); isSpeaking = false
         maxRecordingTask?.cancel(); maxRecordingTask = nil
         isSending = false
@@ -308,7 +324,10 @@ final class VoxieV2Model: ObservableObject {
         guard let friend = selected, ready, available, friend.available else {
             status = "Selecteer een beschikbare vriend"; return
         }
-        guard !isSpeaking, !isSending, outgoing.isEmpty else { return }
+        guard !isSpeaking else { return }
+        guard !isSending, outgoing.isEmpty else {
+            status = "Vorig bericht wordt nog verzonden…"; return
+        }
         holding = true
         transmitRecipientID = friend.id
         Task {
@@ -343,6 +362,7 @@ final class VoxieV2Model: ObservableObject {
             // Let the AVAudioEngine tap deliver its final PCM buffer before
             // draining the queue; the finger release and tap can race.
             flushNotBefore = Date().addingTimeInterval(0.25)
+            outgoingStartedAt = Date()
             status = outgoing.isEmpty ? "Opname verwerken…" : "Versturen…"
         }
         #endif
@@ -366,8 +386,14 @@ final class VoxieV2Model: ObservableObject {
             if let id = selectedFriendID, !friends.contains(where: { $0.id == id }) { selectedFriendID = nil }
         } catch VoxieError.unauthorized {
             signOut()
+            #if os(watchOS)
+            // Stale or revoked Watch session: ask the iPhone for a fresh one.
+            VoxieWatchBridge.shared.requestSessionFromPhone()
+            #endif
         } catch {
-            if !isCancellation(error) { status = "Netwerk: \(error.localizedDescription)" }
+            if !isCancellation(error), !isSpeaking, !isSending {
+                status = "Netwerk: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -430,7 +456,13 @@ final class VoxieV2Model: ObservableObject {
         // Hold = record locally; release = transmit buffered PCM immediately.
         guard ready, !holding, !isSpeaking, !isSending, Date() >= flushNotBefore,
               let recipient = transmitRecipientID, !outgoing.isEmpty else { return }
+        if Date().timeIntervalSince(outgoingStartedAt) > 25 {
+            outgoing.removeAll(); transmitRecipientID = nil; sendFailures = 0
+            status = "Bericht verlopen: geen verbinding met de server"
+            return
+        }
         isSending = true
+        defer { isSending = false }
         var chunk = Data()
         while let next = outgoing.first, chunk.count + next.count <= 32768 {
             chunk.append(next)
@@ -446,12 +478,24 @@ final class VoxieV2Model: ObservableObject {
             var upload = request
             upload.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             let (_, response) = try await URLSession.shared.upload(for: upload, from: chunk)
-            try validate(response)
+            switch (response as? HTTPURLResponse)?.statusCode ?? 0 {
+            case 403: throw VoxieError.rejected("Vriend is nu niet beschikbaar (of jij staat op niet beschikbaar)")
+            case 413, 415: throw VoxieError.rejected("Audioformaat geweigerd door server")
+            default: try validate(response)
+            }
             sendFailures = 0
             if outgoing.isEmpty {
                 status = "Verzonden ✓"
                 transmitRecipientID = nil
             }
+        } catch VoxieError.rejected(let reason) {
+            // Permanent refusal (friend unavailable, not friends, bad frame):
+            // retrying forever would block every future recording.
+            outgoing.removeAll(); transmitRecipientID = nil; sendFailures = 0
+            status = reason
+        } catch VoxieError.unauthorized {
+            outgoing.removeAll(); transmitRecipientID = nil
+            signOut()
         } catch {
             outgoing.insert(chunk, at: 0)
             if !isCancellation(error) {
@@ -460,7 +504,6 @@ final class VoxieV2Model: ObservableObject {
                 status = "Audio niet verzonden (poging \(sendFailures)): \(error.localizedDescription)"
             }
         }
-        isSending = false
     }
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
@@ -519,14 +562,14 @@ final class VoxieV2Model: ObservableObject {
 
 private struct OkReply: Decodable { let ok: Bool }
 private enum VoxieError: LocalizedError {
-    case address, server, usernameTaken, unauthorized, detail(String)
+    case address, server, usernameTaken, unauthorized, detail(String), rejected(String)
     var errorDescription: String? {
         switch self {
         case .address: return "Ongeldig HTTPS-adres"
         case .server: return "Serverfout of niet beschikbaar"
         case .usernameTaken: return "Deze gebruikersnaam bestaat al. Kies een andere."
         case .unauthorized: return "Je sessie is verlopen. Meld je opnieuw aan."
-        case .detail(let message): return message
+        case .detail(let message), .rejected(let message): return message
         }
     }
 }

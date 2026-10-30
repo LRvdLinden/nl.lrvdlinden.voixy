@@ -11,7 +11,7 @@ Geel-zwarte iPhone/iPad-beheerapp en Apple Watch-walkietalkie. Beheer je Apple-a
 | Widget/Control Bundle ID | `nl.lrvdlinden.Voxie.watchkitapp.control` |
 | Development Team | `EU3UY476T6` |
 | Marketingversie | `1.0.0` |
-| Build | `18` |
+| Build | `19` |
 | Type | iPhone-companion met zelfstandig werkende Watch-app |
 | Backend | Supabase Edge Function |
 
@@ -33,6 +33,20 @@ Wanneer de eerste migratie al handmatig is uitgevoerd en niet in Supabase's migr
 De server controleert Apple ID-tokens met Apple's ondertekende sleutelset en gebruikt korte, eenmalige login-challenges. Hij bewaart een unieke, niet-hoofdlettergevoelige gebruikersnaam, de gekozen avatar en een vriendenlijst per Apple-account. Na Apple-aanmelding op de iPhone ontvangt de gekoppelde Watch een eigen sessie via WatchConnectivity. Audioframes worden na 30 seconden niet meer opgehaald. Voor publieke lancering zijn aanvullende beveiligingsmaatregelen nodig, zoals rate limiting, sessie-intrekking, quotas, opschoning en een privacybeleid. Audio is HTTPS-versleuteld, maar niet end-to-end-versleuteld.
 
 ## Xcode
+
+### Build 19 — Watch-koppeling en audio gerepareerd
+
+- **Watch bleef op “Stel Voxie in op iPhone” hangen.** De Watch las de WatchConnectivity-context vóórdat de sessie geactiveerd was (dan is die leeg) en kreeg een al eerder verzonden context daarna nooit meer. De context wordt nu pas na activatie verwerkt.
+- **Watch vraagt zelf om een sessie.** Bij openen stuurt de Watch een verzoek naar de iPhone (`sendMessage`). watchOS kan de iPhone-app daarvoor op de achtergrond wekken; de iPhone maakt met zijn eigen Keychain-sessie een Watch-sessie aan en antwoordt direct. Op de Watch staat ook een knop **Koppel opnieuw** met de actuele koppelstatus.
+- WatchConnectivity wordt op de iPhone al bij het opstarten van de app geactiveerd (nodig voor wekken op de achtergrond), en de context wordt opnieuw verzonden zodra de Watch-app geïnstalleerd raakt.
+- Een volume-update van de iPhone logde de Watch uit (context zonder token werd als “afgemeld” gelezen). Alleen een context met `configured` wijzigt nu nog de aanmelding.
+- Een verlopen/ingetrokken Watch-sessie (401) vraagt automatisch een nieuwe aan bij de iPhone.
+- **Netwerk- en audiolussen stopten bij iedere schermwissel**: `onAppear`/`onDisappear` stonden op een `Group` met voorwaardelijke inhoud en werden zo per scherm uitgevoerd. De levenscyclus zit nu op de scene (`scenePhase`). Een nieuw token wordt ingewisseld zonder de lussen te herstarten.
+- **Eén geweigerd bericht blokkeerde alle volgende opnames**: een 403 (vriend niet beschikbaar) werd eindeloos opnieuw geprobeerd, waardoor de wachtrij nooit leeg raakte. Permanente weigeringen en berichten ouder dan 25 seconden worden nu verworpen met een duidelijke melding. Drukken terwijl een bericht nog verstuurd wordt geeft nu een melding in plaats van stil niets te doen.
+- **Afspelen bleef stil na zelf praten**: het opname-engine en wijzigingen in de audioroute stoppen de afspeel-engine. Die wordt nu na opname, bij `AVAudioEngineConfigurationChange` en na een onderbreking herstart. De audiosessie wordt eenmalig geconfigureerd in plaats van bij elk frame.
+- Geen microfoonroute (0 Hz-formaat) gaf een crash bij `installTap`; nu een foutmelding.
+- Voxie Control-extensie gebruikt nu dezelfde versie/build als de app (App Store-validatie eiste dat).
+- Nog steeds: ontvangen werkt alleen terwijl de Watch-app actief is (zie OS-beperking build 18). Test met twee fysieke Watches, elk gekoppeld aan een eigen iPhone met een eigen Apple-account.
 
 ### Build 18 — iPhone/iPad uitsluitend beheer; Apple Watch uitsluitend audio
 

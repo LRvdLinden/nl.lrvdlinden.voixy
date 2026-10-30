@@ -23,23 +23,10 @@ struct VoxieHomeView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear {
-            if !UserDefaults.standard.bool(forKey: "voxie.watchPairedViaPhone") {
-                model.signOut()
-            }
-            VoxieWatchBridge.shared.onSessionChanged = { token in
-                model.acceptWatchSession(token)
-            }
-            VoxieWatchBridge.shared.onVolumeChanged = { volume in
-                model.setPlaybackVolume(volume)
-            }
-            VoxieWatchBridge.shared.activate()
-            model.start()
-        }
-        .onDisappear { model.stop() }
     }
 
     private var watchSetupPrompt: some View {
+        ScrollView {
         VStack(spacing: 12) {
             Image(systemName: "iphone.gen3")
                 .font(.system(size: 34))
@@ -51,8 +38,20 @@ struct VoxieHomeView: View {
             Text("Open Voxie op je iPhone en doorloop de installatie. De Watch wordt daarna via je iPhone gekoppeld.")
                 .font(.footnote)
                 .multilineTextAlignment(.center)
+            if model.status != "Log in met Apple" {
+                Text(model.status)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.gray)
+                    .multilineTextAlignment(.center)
+            }
+            Button("Koppel opnieuw") {
+                VoxieWatchBridge.shared.requestSessionFromPhone()
+            }
+            .tint(voxieYellow)
+            .font(.system(size: 12, weight: .semibold))
         }
         .padding()
+        }
         .background(.black)
     }
 

@@ -11,12 +11,34 @@ final class LiveAudio {
                                         sampleRate: 16_000, channels: 1, interleaved: false)!
     private let floatFormat = AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)!
     private var capturing = false
+    private var sessionConfigured = false
     private var playbackLevel: Float = 1
+    private var configurationObserver: NSObjectProtocol?
+    private var interruptionObserver: NSObjectProtocol?
 
     init() {
         playback.attach(player)
         playback.connect(player, to: playback.mainMixerNode, format: floatFormat)
         playback.mainMixerNode.outputVolume = playbackLevel
+
+        // Starting/stopping the microphone engine (or a route change) can stop
+        // the playback engine. Without restarting it, every later frame was
+        // scheduled on a dead engine and stayed silent.
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: playback, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.restartPlayback() }
+        }
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: raw) == .ended else { return }
+            Task { @MainActor [weak self] in
+                self?.sessionConfigured = false
+                self?.restartPlayback()
+            }
+        }
     }
 
     func setPlaybackVolume(_ value: Float) {
@@ -24,20 +46,39 @@ final class LiveAudio {
         playback.mainMixerNode.outputVolume = playbackLevel
     }
 
-    func prepare() throws {
+    private func configureSession() throws {
         let session = AVAudioSession.sharedInstance()
-        #if os(iOS)
-        // .playAndRecord bypasses the Ring/Silent switch, including when locked.
-        // Route speech to the speaker by default without modifying system volume.
-        try session.setCategory(.playAndRecord, mode: .voiceChat,
-                                options: [.defaultToSpeaker, .allowBluetooth])
-        #else
-        // watchOS routes audio to the Watch speaker or connected audio device.
-        try session.setCategory(.playAndRecord, mode: .voiceChat)
-        #endif
+        if !sessionConfigured {
+            #if os(iOS)
+            // .playAndRecord bypasses the Ring/Silent switch, including when locked.
+            try session.setCategory(.playAndRecord, mode: .voiceChat,
+                                    options: [.defaultToSpeaker, .allowBluetooth])
+            #else
+            // watchOS routes audio to the Watch speaker or connected audio device.
+            do {
+                try session.setCategory(.playAndRecord, mode: .voiceChat)
+            } catch {
+                try session.setCategory(.playAndRecord, mode: .default)
+            }
+            #endif
+            sessionConfigured = true
+        }
         try session.setActive(true)
-        if !playback.isRunning { try playback.start() }
+    }
+
+    /// Ensures the playback engine and player node are running.
+    func prepare() throws {
+        try configureSession()
+        if !playback.isRunning {
+            playback.prepare()
+            try playback.start()
+        }
         if !player.isPlaying { player.play() }
+    }
+
+    private func restartPlayback() {
+        guard !capturing else { return }
+        try? prepare()
     }
 
     func startCapture(onChunk: @escaping @Sendable (Data) -> Void) throws {
@@ -45,13 +86,20 @@ final class LiveAudio {
         try prepare()
         let node = capture.inputNode
         let native = node.outputFormat(forBus: 0)
+        // A 0 Hz / 0-channel format means no microphone route is available
+        // (simulator without input, permission revoked, audio busy). Installing
+        // a tap with it raises an Objective-C exception and crashes the app.
+        guard native.sampleRate > 0, native.channelCount > 0 else {
+            throw AudioProblem.noMicrophone
+        }
         guard let converter = AVAudioConverter(from: native, to: pcmFormat) else {
             throw AudioProblem.converter
         }
         let targetFormat = pcmFormat
+        let ratio = 16_000 / native.sampleRate
         // ~170 ms at 48 kHz: avoids flooding HTTPS with tiny sub-50 ms uploads.
         node.installTap(onBus: 0, bufferSize: 8192, format: native) { buffer, _ in
-            let capacity = AVAudioFrameCount(Double(buffer.frameLength) * 16_000 / native.sampleRate + 128)
+            let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio + 128)
             guard let output = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else { return }
             var used = false
             var conversionError: NSError?
@@ -66,6 +114,7 @@ final class LiveAudio {
             onChunk(Data(bytes: samples, count: Int(output.frameLength) * MemoryLayout<Int16>.size))
         }
         do {
+            capture.prepare()
             try capture.start()
             capturing = true
         } catch {
@@ -79,10 +128,13 @@ final class LiveAudio {
         capture.inputNode.removeTap(onBus: 0)
         capture.stop()
         capturing = false
+        // The capture engine shares the audio hardware; bring playback back so
+        // the reply from a friend is audible immediately.
+        restartPlayback()
     }
 
     func play(_ pcm: Data, onPlayed: @escaping @Sendable () -> Void) throws {
-        guard pcm.count >= 2, pcm.count.isMultiple(of: 2) else { return }
+        guard pcm.count >= 2, pcm.count.isMultiple(of: 2) else { onPlayed(); return }
         try prepare()
         let count = pcm.count / 2
         guard let output = AVAudioPCMBuffer(pcmFormat: floatFormat,
@@ -90,10 +142,11 @@ final class LiveAudio {
               let channel = output.floatChannelData?[0] else { return }
         output.frameLength = AVAudioFrameCount(count)
         // Decode little-endian PCM16 without assuming Data has Int16 alignment.
-        let bytes = [UInt8](pcm)
-        for n in 0..<count {
-            let sample = UInt16(bytes[n * 2]) | (UInt16(bytes[n * 2 + 1]) << 8)
-            channel[n] = Float(Int16(bitPattern: sample)) / 32768
+        pcm.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            for n in 0..<count {
+                let sample = UInt16(raw[n * 2]) | (UInt16(raw[n * 2 + 1]) << 8)
+                channel[n] = Float(Int16(bitPattern: sample)) / 32768
+            }
         }
         player.scheduleBuffer(output, completionCallbackType: .dataPlayedBack) { _ in
             onPlayed()
@@ -102,6 +155,11 @@ final class LiveAudio {
 }
 
 private enum AudioProblem: LocalizedError {
-    case converter
-    var errorDescription: String? { "Audioformaat niet ondersteund" }
+    case converter, noMicrophone
+    var errorDescription: String? {
+        switch self {
+        case .converter: return "Audioformaat niet ondersteund"
+        case .noMicrophone: return "Geen microfoon beschikbaar"
+        }
+    }
 }

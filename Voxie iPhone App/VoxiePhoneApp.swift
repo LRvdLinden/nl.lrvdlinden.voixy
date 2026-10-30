@@ -7,6 +7,12 @@ import SwiftUI
 struct VoxiePhoneApp: App {
     @StateObject private var model = VoxieV2Model()
 
+    init() {
+        // Activate before any view exists: the Watch can wake this app in the
+        // background with a session request, and then no view's onAppear runs.
+        VoxieWatchBridge.shared.activate()
+    }
+
     var body: some Scene {
         WindowGroup {
             VoxiePhoneHomeView()
