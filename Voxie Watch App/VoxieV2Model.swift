@@ -59,7 +59,9 @@ final class VoxieV2Model: ObservableObject {
     @Published private(set) var friends: [VoxieFriend] = []
     @Published private(set) var pending: [VoxiePendingFriend] = []
     @Published private(set) var invitations: [VoxieInvitation] = []
-    @Published var selectedFriendID: String?
+    @Published var selectedFriendID: String? {
+        didSet { if oldValue != selectedFriendID { lastSendOK = false } }
+    }
     @Published private(set) var available = UserDefaults.standard.object(forKey: "v2.available") as? Bool ?? true
     @Published private(set) var playbackVolume = UserDefaults.standard.object(forKey: "voxie.playbackVolume") as? Double ?? 1.0
     @Published private(set) var isSpeaking = false
@@ -465,7 +467,7 @@ final class VoxieV2Model: ObservableObject {
                         }
                     }
                 } catch {
-                    scheduledPlayback = max(0, scheduledPlayback - 1)
+                    playbackFinishedOne()
                     status = "Afspelen mislukt: \(error.localizedDescription)"
                     break
                 }
@@ -485,8 +487,20 @@ final class VoxieV2Model: ObservableObject {
         friends.first(where: { $0.id == id }).map { "@\($0.name)" } ?? "Je vriend"
     }
 
+    private var incomingSafetyTask: Task<Void, Never>?
+
     private func beginIncoming(from sender: String, name: String) {
         incomingEndTask?.cancel()
+        // Safety net: never leave the "praat…" screen up if a playback
+        // callback is lost (e.g. app suspended mid-message).
+        incomingSafetyTask?.cancel()
+        incomingSafetyTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(20))
+            guard !Task.isCancelled, let self, self.incomingFriendID == sender else { return }
+            self.scheduledPlayback = 0
+            self.incomingFriendID = nil
+            self.incomingName = nil
+        }
         incomingFriendID = sender
         incomingName = name
         #if os(watchOS)
@@ -513,9 +527,10 @@ final class VoxieV2Model: ObservableObject {
 
     #if os(watchOS)
     /// Called for a "praat met je" notification. `opened` = tapped by the user.
-    func handleTalkNotification(sender: String?, opened: Bool) {
-        if opened, let sender { openFriendRequest = sender }
-        if !available && opened { setAvailable(true) }
+    func handleTalkNotification(sender: String?, kind: String?, opened: Bool) {
+        let isTalk = kind == "talk" || kind == "request"
+        if opened, isTalk, let sender { openFriendRequest = sender }
+        if opened, kind == "request", !available { setAvailable(true) }
         start()
         Task { await receiveFrames() }
     }

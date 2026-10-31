@@ -45,8 +45,8 @@ struct VoxieApp: App {
         bridge.onPairingStatus = { text in voxie.setPairingStatus(text) }
         bridge.needsSession = { !voxie.ready }
         VoxiePushDelegate.onToken = { token in voxie.setPushToken(token) }
-        VoxiePushDelegate.onTalk = { sender, opened in
-            voxie.handleTalkNotification(sender: sender, opened: opened)
+        VoxiePushDelegate.onTalk = { sender, kind, opened in
+            voxie.handleTalkNotification(sender: sender, kind: kind, opened: opened)
         }
         bridge.activate()
         voxie.start()

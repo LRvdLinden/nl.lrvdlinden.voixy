@@ -15,16 +15,16 @@ final class VoxiePushDelegate: NSObject, WKApplicationDelegate, UNUserNotificati
         didSet { if let latestToken { onToken?(latestToken) } }
     }
     /// Sender ID of a talk notification. `opened` is true when the user tapped it.
-    static var onTalk: ((_ senderID: String?, _ opened: Bool) -> Void)? {
+    static var onTalk: ((_ senderID: String?, _ kind: String?, _ opened: Bool) -> Void)? {
         didSet {
             if let pending = pendingOpen {
                 pendingOpen = nil
-                onTalk?(pending.isEmpty ? nil : pending, true)
+                onTalk?(pending.sender, pending.kind, true)
             }
         }
     }
     private static var latestToken: String?
-    private static var pendingOpen: String?
+    private static var pendingOpen: (sender: String?, kind: String?)?
 
     func applicationDidFinishLaunching() {
         let center = UNUserNotificationCenter.current()
@@ -67,7 +67,7 @@ final class VoxiePushDelegate: NSObject, WKApplicationDelegate, UNUserNotificati
         if info["kind"] as? String == "talk" {
             // Voxie is on screen: play instead of showing a banner.
             let sender = info["sender"] as? String
-            DispatchQueue.main.async { Self.onTalk?(sender, false) }
+            DispatchQueue.main.async { Self.onTalk?(sender, "talk", false) }
             completionHandler([])
         } else {
             completionHandler([.banner, .list, .sound])
@@ -78,8 +78,9 @@ final class VoxiePushDelegate: NSObject, WKApplicationDelegate, UNUserNotificati
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let info = response.notification.request.content.userInfo
         let sender = info["sender"] as? String
+        let kind = info["kind"] as? String
         DispatchQueue.main.async {
-            if let handler = Self.onTalk { handler(sender, true) } else { Self.pendingOpen = sender ?? "" }
+            if let handler = Self.onTalk { handler(sender, kind, true) } else { Self.pendingOpen = (sender, kind) }
         }
         completionHandler()
     }

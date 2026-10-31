@@ -161,7 +161,7 @@ final class LiveAudio {
         let count = pcm.count / 2
         guard let output = AVAudioPCMBuffer(pcmFormat: floatFormat,
                                            frameCapacity: AVAudioFrameCount(count)),
-              let channel = output.floatChannelData?[0] else { return }
+              let channel = output.floatChannelData?[0] else { onPlayed(); return }
         output.frameLength = AVAudioFrameCount(count)
         // Decode little-endian PCM16 without assuming Data has Int16 alignment.
         pcm.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in

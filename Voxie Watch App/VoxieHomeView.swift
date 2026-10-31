@@ -240,6 +240,7 @@ private struct TalkView: View {
     let friendID: String
     @State private var crownVolume = 1.0
     @State private var showVolume = false
+    @State private var crownReady = false
     @State private var hideVolumeTask: Task<Void, Never>?
 
     private var friend: VoxieFriend? { model.friends.first { $0.id == friendID } }
@@ -276,6 +277,7 @@ private struct TalkView: View {
         .digitalCrownRotation($crownVolume, from: 0.1, through: 1, by: 0.05,
                               sensitivity: .low, isContinuous: false, isHapticFeedbackEnabled: true)
         .onChange(of: crownVolume) { _, value in
+            guard crownReady else { crownReady = true; return }
             model.setPlaybackVolume(value)
             showVolume = true
             hideVolumeTask?.cancel()
@@ -285,6 +287,7 @@ private struct TalkView: View {
             }
         }
         .onAppear {
+            crownReady = abs(crownVolume - model.playbackVolume) < 0.001
             crownVolume = model.playbackVolume
             model.selectedFriendID = friendID
         }
@@ -319,7 +322,9 @@ private struct TalkButton: View {
     @State private var pressed = false
 
     var body: some View {
-        let live = pressed || model.isSpeaking
+        // In tap mode only a real recording lights the button, so a refused
+        // start (no permission, still sending) never leaves it stuck on.
+        let live = tapToTalk ? model.isSpeaking : (pressed || model.isSpeaking)
         ZStack {
             Circle()
                 .fill(walkieYellow.opacity(model.available ? 1 : 0.4))
@@ -355,11 +360,9 @@ private struct TalkButton: View {
             })
         .onTapGesture {
             guard tapToTalk else { return }
-            if model.isSpeaking || pressed {
-                pressed = false
+            if model.isSpeaking {
                 model.endSpeaking()
             } else {
-                pressed = true
                 model.beginSpeaking()
             }
         }
