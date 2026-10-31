@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct VoxieApp: App {
+    @WKApplicationDelegateAdaptor(VoxiePushDelegate.self) private var pushDelegate
     @StateObject private var model = VoxieV2Model()
     @Environment(\.scenePhase) private var scenePhase
     @State private var didSetUp = false
@@ -43,6 +44,10 @@ struct VoxieApp: App {
         bridge.onVolumeChanged = { volume in voxie.setPlaybackVolume(volume) }
         bridge.onPairingStatus = { text in voxie.setPairingStatus(text) }
         bridge.needsSession = { !voxie.ready }
+        VoxiePushDelegate.onToken = { token in voxie.setPushToken(token) }
+        VoxiePushDelegate.onTalk = { sender, opened in
+            voxie.handleTalkNotification(sender: sender, opened: opened)
+        }
         bridge.activate()
         voxie.start()
     }

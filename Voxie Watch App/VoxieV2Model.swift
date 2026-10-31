@@ -2,6 +2,9 @@ import AVFoundation
 import Foundation
 import UserNotifications
 import SwiftUI
+#if os(watchOS)
+import WatchKit
+#endif
 
 struct VoxieFriend: Decodable, Identifiable {
     let id: String
@@ -61,6 +64,13 @@ final class VoxieV2Model: ObservableObject {
     @Published private(set) var playbackVolume = UserDefaults.standard.object(forKey: "voxie.playbackVolume") as? Double ?? 1.0
     @Published private(set) var isSpeaking = false
     @Published private(set) var isSending = false
+    /// Friend whose voice is playing right now (Walkie-Talkie "praat…" screen).
+    @Published private(set) var incomingFriendID: String?
+    @Published private(set) var incomingName: String?
+    /// Set by a tapped notification; the Watch UI navigates to this friend.
+    @Published var openFriendRequest: String?
+    /// Last upload result for the talk screen ("Verzonden", "niet beschikbaar").
+    @Published private(set) var lastSendOK = false
 
     private var identity = ""
     private var token = VoxieCredentialStore.load() ?? ""
@@ -78,6 +88,12 @@ final class VoxieV2Model: ObservableObject {
     private var sendFailures = 0
     private var transmitRecipientID: String?
     private var flushNotBefore = Date.distantPast
+    private var isReceiving = false
+    private var scheduledPlayback = 0
+    private var incomingEndTask: Task<Void, Never>?
+    private var messageStartPending = false
+    private var pushToken: String?
+    private var registeredPushToken: String?
 
     init() {
         audio.setPlaybackVolume(Float(playbackVolume))
@@ -197,6 +213,8 @@ final class VoxieV2Model: ObservableObject {
         stop(); outgoing.removeAll(); VoxieCredentialStore.clear(); token = ""; identity = ""
         holding = false
         transmitRecipientID = nil
+        registeredPushToken = nil
+        incomingFriendID = nil; incomingName = nil
         #if os(watchOS)
         UserDefaults.standard.removeObject(forKey: "voxie.watchPairedViaPhone")
         #endif
@@ -235,6 +253,9 @@ final class VoxieV2Model: ObservableObject {
 
     func start() {
         guard ready, refreshTask == nil else { return }
+        #if os(watchOS)
+        Task { await registerPushTokenIfNeeded() }
+        #endif
         if !available { setAvailable(false) }
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -321,9 +342,14 @@ final class VoxieV2Model: ObservableObject {
 
     func beginSpeaking() {
         #if os(watchOS)
-        guard let friend = selected, ready, available, friend.available else {
-            status = "Selecteer een beschikbare vriend"; return
+        guard let friend = selected, ready else {
+            status = "Kies eerst een vriend"; return
         }
+        guard available else {
+            status = "Zet Voxie eerst op beschikbaar"; return
+        }
+        // An unavailable friend may still be addressed: the server then sends
+        // them a "wil met je praten" notification, like Apple's Walkie-Talkie.
         guard !isSpeaking else { return }
         guard !isSending, outgoing.isEmpty else {
             status = "Vorig bericht wordt nog verzonden…"; return
@@ -334,11 +360,14 @@ final class VoxieV2Model: ObservableObject {
             let permission = await AVAudioApplication.requestRecordPermission()
             guard permission else { status = "Geef toegang tot microfoon"; return }
             guard holding else { return }
+            WKInterfaceDevice.current().play(.start)
+            audio.playChirp(rising: true)
             do {
                 try audio.startCapture { [weak self] pcm in
                     Task { @MainActor [weak self] in self?.outgoing.append(pcm) }
                 }
                 isSpeaking = true
+                lastSendOK = false
                 status = "Neem op voor \(friend.name)…"
                 maxRecordingTask?.cancel()
                 maxRecordingTask = Task { [weak self] in
@@ -363,6 +392,9 @@ final class VoxieV2Model: ObservableObject {
             // draining the queue; the finger release and tap can race.
             flushNotBefore = Date().addingTimeInterval(0.25)
             outgoingStartedAt = Date()
+            messageStartPending = true
+            WKInterfaceDevice.current().play(.stop)
+            audio.playChirp(rising: false)
             status = outgoing.isEmpty ? "Opname verwerken…" : "Versturen…"
         }
         #endif
@@ -398,7 +430,11 @@ final class VoxieV2Model: ObservableObject {
     }
 
     private func receiveFrames() async {
-        guard ready else { return }
+        // The poll loop and a notification can both ask for audio; never let
+        // two fetches run at once or the same frame would play twice.
+        guard ready, !isReceiving else { return }
+        isReceiving = true
+        defer { isReceiving = false }
         do {
             #if os(watchOS)
             let device = "watch"
@@ -420,12 +456,16 @@ final class VoxieV2Model: ObservableObject {
                 guard available, !isSpeaking else { break }
                 let playedID = frame.id
                 do {
+                    if incomingFriendID != frame.sender { beginIncoming(from: frame.sender, name: senderName) }
+                    scheduledPlayback += 1
                     try audio.play(data) { [weak self] in
                         Task { @MainActor [weak self] in
+                            self?.playbackFinishedOne()
                             await self?.acknowledgeFrame(playedID, device: device, phase: "played")
                         }
                     }
                 } catch {
+                    scheduledPlayback = max(0, scheduledPlayback - 1)
                     status = "Afspelen mislukt: \(error.localizedDescription)"
                     break
                 }
@@ -440,6 +480,67 @@ final class VoxieV2Model: ObservableObject {
             if !isCancellation(error) { status = "Ontvangen mislukt: \(error.localizedDescription)" }
         }
     }
+
+    private func friendName(_ id: String) -> String {
+        friends.first(where: { $0.id == id }).map { "@\($0.name)" } ?? "Je vriend"
+    }
+
+    private func beginIncoming(from sender: String, name: String) {
+        incomingEndTask?.cancel()
+        incomingFriendID = sender
+        incomingName = name
+        #if os(watchOS)
+        WKInterfaceDevice.current().play(.notification)
+        #endif
+        audio.playChirp(rising: true)
+    }
+
+    private func playbackFinishedOne() {
+        scheduledPlayback = max(0, scheduledPlayback - 1)
+        guard scheduledPlayback == 0 else { return }
+        // Chunks of one message arrive with small gaps; wait before closing
+        // the "praat…" screen so it doesn't flicker between chunks.
+        incomingEndTask?.cancel()
+        incomingEndTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(1200))
+            guard !Task.isCancelled, let self, self.scheduledPlayback == 0 else { return }
+            if self.incomingFriendID != nil { self.audio.playChirp(rising: false) }
+            self.incomingFriendID = nil
+            self.incomingName = nil
+            if self.status.hasSuffix("praat…") { self.status = "" }
+        }
+    }
+
+    #if os(watchOS)
+    /// Called for a "praat met je" notification. `opened` = tapped by the user.
+    func handleTalkNotification(sender: String?, opened: Bool) {
+        if opened, let sender { openFriendRequest = sender }
+        if !available && opened { setAvailable(true) }
+        start()
+        Task { await receiveFrames() }
+    }
+
+    func setPushToken(_ value: String) {
+        pushToken = value
+        Task { await registerPushTokenIfNeeded() }
+    }
+
+    private func registerPushTokenIfNeeded() async {
+        guard ready, let pushToken, registeredPushToken != pushToken else { return }
+        #if DEBUG
+        let environment = "sandbox"
+        #else
+        let environment = "production"
+        #endif
+        do {
+            let _: OkReply = try await sendJSONObject("/v3/push-token",
+                                                      value: ["token": pushToken, "environment": environment])
+            registeredPushToken = pushToken
+        } catch {
+            // Retried on the next start(); notifications are optional.
+        }
+    }
+    #endif
 
     private func acknowledgeFrame(_ id: Int, device: String, phase: String) async {
         guard ready else { return }
@@ -474,25 +575,32 @@ final class VoxieV2Model: ObservableObject {
             if large.count > 32768 { outgoing.insert(Data(large.dropFirst(32768)), at: 0) }
         }
         do {
-            let request = try makeRequest("/v2/frames/\(recipient)", method: "POST")
+            let first = messageStartPending
+            let request = try makeRequest("/v2/frames/\(recipient)" + (first ? "?start=1" : ""), method: "POST")
             var upload = request
             upload.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
             let (_, response) = try await URLSession.shared.upload(for: upload, from: chunk)
             switch (response as? HTTPURLResponse)?.statusCode ?? 0 {
-            case 403: throw VoxieError.rejected("Vriend is nu niet beschikbaar (of jij staat op niet beschikbaar)")
+            case 403: throw VoxieError.rejected("\(friendName(recipient)) is niet beschikbaar en krijgt een melding")
             case 413, 415: throw VoxieError.rejected("Audioformaat geweigerd door server")
             default: try validate(response)
             }
             sendFailures = 0
+            if first { messageStartPending = false }
             if outgoing.isEmpty {
                 status = "Verzonden ✓"
+                lastSendOK = true
                 transmitRecipientID = nil
             }
         } catch VoxieError.rejected(let reason) {
             // Permanent refusal (friend unavailable, not friends, bad frame):
             // retrying forever would block every future recording.
             outgoing.removeAll(); transmitRecipientID = nil; sendFailures = 0
+            messageStartPending = false
             status = reason
+            #if os(watchOS)
+            WKInterfaceDevice.current().play(.failure)
+            #endif
         } catch VoxieError.unauthorized {
             outgoing.removeAll(); transmitRecipientID = nil
             signOut()

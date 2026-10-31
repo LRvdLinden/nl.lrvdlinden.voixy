@@ -11,7 +11,7 @@ Geel-zwarte iPhone/iPad-beheerapp en Apple Watch-walkietalkie. Beheer je Apple-a
 | Widget/Control Bundle ID | `nl.lrvdlinden.Voxie.watchkitapp.control` |
 | Development Team | `EU3UY476T6` |
 | Marketingversie | `1.0.0` |
-| Build | `19` |
+| Build | `20` |
 | Type | iPhone-companion met zelfstandig werkende Watch-app |
 | Backend | Supabase Edge Function |
 
@@ -33,6 +33,30 @@ Wanneer de eerste migratie al handmatig is uitgevoerd en niet in Supabase's migr
 De server controleert Apple ID-tokens met Apple's ondertekende sleutelset en gebruikt korte, eenmalige login-challenges. Hij bewaart een unieke, niet-hoofdlettergevoelige gebruikersnaam, de gekozen avatar en een vriendenlijst per Apple-account. Na Apple-aanmelding op de iPhone ontvangt de gekoppelde Watch een eigen sessie via WatchConnectivity. Audioframes worden na 30 seconden niet meer opgehaald. Voor publieke lancering zijn aanvullende beveiligingsmaatregelen nodig, zoals rate limiting, sessie-intrekking, quotas, opschoning en een privacybeleid. Audio is HTTPS-versleuteld, maar niet end-to-end-versleuteld.
 
 ## Xcode
+
+### Build 20 — Walkietalkie-ontwerp en pushmeldingen
+
+**Nieuw Watch-ontwerp, naar Apple's Walkietalkie-app**
+- Startscherm: schakelaar **Walkietalkie** (beschikbaar) bovenaan, daaronder grote afgeronde kaarten per vriend: **geel** = je kunt praten, **grijs** = niet beschikbaar of uitgenodigd (sectie *Uitgenodigde vrienden*). Uitnodigingen staan bovenaan met **Sta toe** / **Weiger**. Veeg naar links op een vriend voor de verwijderknop (kruisje). Onderaan **Voeg vrienden toe**.
+- Tik op een vriend: groot geel praatscherm. Houd vast om te praten, laat los om te versturen (max. 15 s). Tijdens praten gloeit de knop; daarna *Verbinden…* → *Verzonden*.
+- Digital Crown regelt het afspeelvolume (met volume-indicator).
+- Piepje en tik op de pols bij begin en einde van praten en van ontvangen.
+- Als een vriend praat verschijnt zijn of haar foto met pulserende gele ringen en *praat…*.
+- **Tik om te praten** (onder *Voeg vrienden toe*): tik één keer om te beginnen en nog eens om te versturen.
+
+**Pushmeldingen**
+- Als iemand tegen je praat, krijgt je Watch direct een melding: *@naam — praat met je, tik om te luisteren*, met eigen Voxie-piepje. Tik erop: Voxie opent dat gesprek en speelt het bericht meteen af.
+- Staat Voxie al open, dan komt er geen banner maar wordt het bericht direct afgespeeld.
+- Ben je niet beschikbaar, dan krijg je *@naam wil met je praten* (net als bij Apple). Ook een nieuwe vriendschapsuitnodiging geeft een melding.
+- Niet-afgespeelde spraak blijft nu **2 minuten** op de server staan (was 30 s), zodat een later aangetikte melding het hele bericht nog afspeelt. Daarna wordt hij verwijderd.
+
+**Wat je hiervoor eenmalig moet doen**
+1. Apple Developer → Identifiers → `nl.lrvdlinden.Voxie.watchkitapp` → vink **Push Notifications** aan. (Optioneel: **Time Sensitive Notifications**, dan komen meldingen ook door een Focus heen.) In Xcode staat `aps-environment` nu in `VoxieWatch.entitlements`; laat automatische signing het profiel vernieuwen.
+2. Maak bij Apple Developer → Keys een **APNs**-sleutel (.p8) als je die nog niet hebt, en zet in GitHub → Settings → Secrets → Actions: `APNS_AUTH_KEY_P8` (volledige inhoud van de .p8), `APNS_KEY_ID`, `APNS_TEAM_ID` = `EU3UY476T6`.
+3. Draai GitHub Actions → **Deploy Voxie backend** (gebeurt ook automatisch bij deze push). Die past migratie `20261031000000_watch_alerts.sql` toe en publiceert de functie.
+4. Sta op de Watch meldingen toe voor Voxie. Een build vanuit Xcode registreert zich als `sandbox`, TestFlight/App Store als `production`; de server kiest per Watch automatisch de juiste APNs-omgeving (de oude repo-variabele `APNS_ENVIRONMENT` is niet meer nodig).
+
+**Grens van watchOS (eerlijk):** geen enkele app van derden mag op een gesloten of geschorste Apple Watch zelf geluid gaan afspelen. Apple's eigen Walkietalkie kon dat met systeemrechten, en Apple heeft die app in watchOS 27 stopgezet. Voxie doet daarom wat wél mag: direct een melding met geluid en tik op de pols, en meteen afspelen zodra je de melding aantikt of Voxie open is.
 
 ### Build 19 — Watch-koppeling en audio gerepareerd
 

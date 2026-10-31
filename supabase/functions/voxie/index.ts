@@ -2,7 +2,7 @@
 // Deploy with `supabase functions deploy voxie --no-verify-jwt`.
 // All privileged access stays here; never embed Supabase secret keys in watchOS.
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { createRemoteJWKSet, jwtVerify } from "npm:jose@5";
+import { createRemoteJWKSet, jwtVerify, SignJWT, importPKCS8 } from "npm:jose@5";
 
 const projectURL = Deno.env.get("SUPABASE_URL")!;
 const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || (() => {
@@ -17,6 +17,81 @@ const db = createClient(projectURL, secret, { auth: { persistSession: false } })
 const appleKeys = createRemoteJWKSet(new URL("https://appleid.apple.com/auth/keys"));
 const appleAudiences = ["nl.lrvdlinden.Voxie", "nl.lrvdlinden.Voxie.watchkitapp"];
 const encoder = new TextEncoder();
+
+// --- Apple Push Notification service (Watch alerts) -------------------------
+// Secrets are placed by the "Deploy Voxie backend" workflow. Without them the
+// API keeps working; only notifications are skipped.
+const apnsKeyID = Deno.env.get("APNS_KEY_ID") ?? "";
+const apnsTeamID = Deno.env.get("APNS_TEAM_ID") ?? "";
+const apnsPrivateKey = (Deno.env.get("APNS_AUTH_KEY_P8") ?? "").replace(/\\n/g, "\n");
+const watchTopic = "nl.lrvdlinden.Voxie.watchkitapp";
+let apnsSigningKey: Awaited<ReturnType<typeof importPKCS8>> | null = null;
+let apnsBearer: { value: string; expires: number } | null = null;
+// Unplayed speech stays fetchable this long, so tapping the notification
+// still plays the whole message.
+const audioLifetimeMs = 120_000;
+
+async function apnsAuthorization() {
+  if (!apnsSigningKey) apnsSigningKey = await importPKCS8(apnsPrivateKey, "ES256");
+  if (!apnsBearer || apnsBearer.expires <= Date.now()) {
+    const value = await new SignJWT({}).setProtectedHeader({ alg: "ES256", kid: apnsKeyID })
+      .setIssuer(apnsTeamID).setIssuedAt().sign(apnsSigningKey);
+    apnsBearer = { value, expires: Date.now() + 45 * 60_000 };
+  }
+  return `bearer ${apnsBearer.value}`;
+}
+
+/** Sends a visible alert to the user's Apple Watch. Never throws. */
+async function notifyWatch(userID: string, title: string, body: string,
+                           extra: Record<string, unknown>, collapseID?: string) {
+  try {
+    if (!apnsKeyID || !apnsTeamID || !apnsPrivateKey) return;
+    const { data: target } = await db.from("voxie_users")
+      .select("apns_token,apns_environment").eq("id", userID).maybeSingle();
+    const token = target?.apns_token;
+    if (!token) return;
+    const host = target.apns_environment === "sandbox"
+      ? "https://api.sandbox.push.apple.com" : "https://api.push.apple.com";
+    const headers: Record<string, string> = {
+      authorization: await apnsAuthorization(),
+      "apns-topic": watchTopic, "apns-push-type": "alert",
+      "apns-priority": "10", "apns-expiration": "0",
+      "content-type": "application/json"
+    };
+    if (collapseID) headers["apns-collapse-id"] = collapseID.slice(0, 64);
+    const response = await fetch(`${host}/3/device/${token}`, {
+      method: "POST", headers,
+      body: JSON.stringify({
+        aps: { alert: { title, body }, sound: "voxie-chirp.wav",
+          "interruption-level": "time-sensitive", category: "VOXIE_TALK",
+          "thread-id": String(extra.sender ?? "voxie") },
+        ...extra
+      })
+    });
+    if (response.status === 410 || response.status === 400) {
+      const reason = await response.text();
+      if (response.status === 410 || reason.includes("BadDeviceToken"))
+        await db.from("voxie_users").update({ apns_token: null }).eq("id", userID).eq("apns_token", token);
+      console.error("APNs rejected", response.status, reason);
+    } else if (!response.ok) {
+      console.error("APNs delivery failed", response.status, await response.text());
+    }
+  } catch (error) {
+    console.error("APNs request error", String(error));
+  }
+}
+
+// Don't make the speaker wait for Apple: hand the push to the runtime when
+// Supabase's EdgeRuntime.waitUntil is available, otherwise await it.
+// deno-lint-ignore no-explicit-any
+const edgeRuntime = (globalThis as any).EdgeRuntime;
+async function inBackground(task: Promise<void>) {
+  if (edgeRuntime?.waitUntil) { edgeRuntime.waitUntil(task); return; }
+  await task;
+}
+
+const handle = (user: { username?: string | null; display_name?: string | null }) =>
+  user.username ? `@${user.username}` : (user.display_name ?? "Een vriend");
 const cors = { "content-type": "application/json", "cache-control": "no-store" };
 const json = (status: number, value: unknown) => new Response(JSON.stringify(value), { status, headers: cors });
 const fail = (status: number, message: string) => json(status, { error: message });
@@ -165,6 +240,17 @@ Deno.serve(async (req: Request) => {
     return error ? fail(503, "watch pairing unavailable") : json(200, { token });
   }
 
+  // The Watch registers its own APNs device token (independent watchOS app).
+  if (req.method === "POST" && path === "/v3/push-token") {
+    const input = await bodyJSON(req);
+    const token = typeof input?.token === "string" ? input.token : "";
+    const environment = input?.environment === "sandbox" ? "sandbox" : "production";
+    if (!/^[0-9a-fA-F]{32,512}$/.test(token)) return fail(400, "invalid APNs token");
+    const { error } = await db.from("voxie_users")
+      .update({ apns_token: token.toLowerCase(), apns_environment: environment }).eq("id", me.id);
+    return error ? fail(500, "push registration failed") : json(200, { ok: true });
+  }
+
   // Explicit account deletion only. iOS does not notify servers on uninstall.
   // Foreign keys cascade invitations, friendships, sessions and audio frames.
   if (req.method === "DELETE" && path === "/v3/account") {
@@ -214,7 +300,10 @@ Deno.serve(async (req: Request) => {
     const { error } = await db.from("voxie_invitations").upsert(
       { sender: me.id, recipient: recipient.id, status: "pending" },
       { onConflict: "sender,recipient" });
-    return error ? fail(500, "invite failed") : json(201, { ok: true });
+    if (error) return fail(500, "invite failed");
+    await notifyWatch(recipient.id, "Voxie", `${handle(me)} wil met je praten via Voxie`,
+      { kind: "invite", sender: me.id }, `invite-${me.id}`);
+    return json(201, { ok: true });
   }
 
   const removeFriend = path.match(/^\/v3\/friends\/([a-f0-9-]{36})\/remove$/);
@@ -315,7 +404,7 @@ Deno.serve(async (req: Request) => {
     const after = Math.max(0, Number(url.searchParams.get("after") ?? "0"));
     if (!Number.isSafeInteger(after)) return fail(400, "invalid cursor");
     await db.from("voxie_users").update({ last_poll: new Date().toISOString() }).eq("id", me.id);
-    const cutoff = new Date(Date.now() - 30_000).toISOString();
+    const cutoff = new Date(Date.now() - audioLifetimeMs).toISOString();
     // Opportunistically purge stale frames (including previous app versions).
     await db.from("voxie_audio_frames").delete().lt("created_at", cutoff);
     const { data, error } = await db.from("voxie_audio_frames")
@@ -352,15 +441,26 @@ Deno.serve(async (req: Request) => {
   if (req.method === "POST" && frame) {
     if (req.headers.get("content-type") !== "application/octet-stream") return fail(415, "expected PCM16");
     const targetID = frame[1];
-    if (!await friendship(me.id, targetID) || !me.available) return fail(403, "not available");
+    const messageStart = url.searchParams.get("start") === "1";
+    if (!await friendship(me.id, targetID)) return fail(403, "not friends");
+    if (!me.available) return fail(403, "you are unavailable");
     const { data: target } = await db.from("voxie_users").select("available,delivery_target")
       .eq("id", targetID).maybeSingle();
-    if (!target?.available) return fail(403, "friend unavailable");
+    if (!target?.available) {
+      // Like Apple's Walkie-Talkie: an unavailable friend gets asked to talk.
+      if (messageStart) await notifyWatch(targetID, handle(me),
+        "wil met je praten. Zet Voxie op beschikbaar om te luisteren.",
+        { kind: "request", sender: me.id }, `request-${me.id}`);
+      return fail(403, "friend unavailable");
+    }
     const pcm = new Uint8Array(await req.arrayBuffer());
     if (pcm.length < 2 || pcm.length > 32768 || pcm.length % 2) return fail(413, "invalid audio frame");
     const { error } = await db.from("voxie_audio_frames")
       .insert({ sender: me.id, recipient: targetID, pcm_base64: decodeAudio(pcm) });
     if (error) return fail(500, "audio upload failed");
+    // One alert per spoken message (first chunk), collapsed per sender.
+    if (messageStart) await inBackground(notifyWatch(targetID, handle(me),
+      "praat met je – tik om te luisteren", { kind: "talk", sender: me.id }, `talk-${me.id}`));
     // watchOS has no iOS PushToTalk framework. Do not send a phone PTT push:
     // the iPhone is no longer an audio endpoint, even for legacy profiles.
     return json(201, { ok: true });

@@ -133,6 +133,28 @@ final class LiveAudio {
         restartPlayback()
     }
 
+    /// Short Walkie-Talkie style chirp: rising when a transmission starts,
+    /// falling when it ends. Synthesised, so no sound file is needed.
+    func playChirp(rising: Bool) {
+        guard (try? prepare()) != nil else { return }
+        let rate = floatFormat.sampleRate
+        let length = AVAudioFrameCount(rate * 0.09)
+        guard let buffer = AVAudioPCMBuffer(pcmFormat: floatFormat, frameCapacity: length),
+              let channel = buffer.floatChannelData?[0] else { return }
+        buffer.frameLength = length
+        let (start, end): (Double, Double) = rising ? (1_250, 1_900) : (1_900, 1_250)
+        var phase = 0.0
+        for n in 0..<Int(length) {
+            let t = Double(n) / Double(length)
+            let frequency = start + (end - start) * t
+            phase += 2 * Double.pi * frequency / rate
+            // Short fade in/out avoids clicks.
+            let envelope = min(1, min(t, 1 - t) * 12)
+            channel[n] = Float(sin(phase) * 0.28 * envelope)
+        }
+        player.scheduleBuffer(buffer, completionHandler: nil)
+    }
+
     func play(_ pcm: Data, onPlayed: @escaping @Sendable () -> Void) throws {
         guard pcm.count >= 2, pcm.count.isMultiple(of: 2) else { onPlayed(); return }
         try prepare()
