@@ -149,7 +149,10 @@ Deno.serve(async (req: Request) => {
   const match = url.pathname.match(/\/(v[23]\/[^?#]*)$/);
   const path = match ? `/${match[1]}`
     : url.pathname.endsWith("/health") ? "/health" : url.pathname;
-  if (path === "/health") return json(200, { ok: true });
+  // `push: true` means the APNs secrets reached this deployment.
+  if (path === "/health") return json(200, {
+    ok: true, push: Boolean(apnsKeyID && apnsTeamID && apnsPrivateKey), build: 21
+  });
 
   // Client nonce is never trusted on its own: it must match a server-issued,
   // single-use challenge and the signed nonce claim in Apple's identity token.

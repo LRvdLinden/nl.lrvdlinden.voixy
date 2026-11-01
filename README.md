@@ -11,7 +11,7 @@ Geel-zwarte iPhone/iPad-beheerapp en Apple Watch-walkietalkie. Beheer je Apple-a
 | Widget/Control Bundle ID | `nl.lrvdlinden.Voxie.watchkitapp.control` |
 | Development Team | `EU3UY476T6` |
 | Marketingversie | `1.0.0` |
-| Build | `20` |
+| Build | `21` |
 | Type | iPhone-companion met zelfstandig werkende Watch-app |
 | Backend | Supabase Edge Function |
 
@@ -33,6 +33,12 @@ Wanneer de eerste migratie al handmatig is uitgevoerd en niet in Supabase's migr
 De server controleert Apple ID-tokens met Apple's ondertekende sleutelset en gebruikt korte, eenmalige login-challenges. Hij bewaart een unieke, niet-hoofdlettergevoelige gebruikersnaam, de gekozen avatar en een vriendenlijst per Apple-account. Na Apple-aanmelding op de iPhone ontvangt de gekoppelde Watch een eigen sessie via WatchConnectivity. Audioframes worden na 30 seconden niet meer opgehaald. Voor publieke lancering zijn aanvullende beveiligingsmaatregelen nodig, zoals rate limiting, sessie-intrekking, quotas, opschoning en een privacybeleid. Audio is HTTPS-versleuteld, maar niet end-to-end-versleuteld.
 
 ## Xcode
+
+### Build 21 — APNs actief na secrets
+
+- Backend opnieuw gepubliceerd zodat de GitHub-secrets `APNS_AUTH_KEY_P8`, `APNS_KEY_ID` en `APNS_TEAM_ID` in de Edge Function staan.
+- Controle: open `https://qalcgyzkicazkmzsouiu.supabase.co/functions/v1/voxie/health`. Bij `"push": true` zijn de pushmeldingen actief; bij `false` staan de secrets niet goed of is de workflow nog bezig.
+- Apps: alleen het buildnummer is opgehoogd (functioneel gelijk aan build 20).
 
 ### Build 20 — Walkietalkie-ontwerp en pushmeldingen
 
