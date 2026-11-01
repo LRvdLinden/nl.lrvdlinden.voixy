@@ -11,7 +11,7 @@ Geel-zwarte iPhone/iPad-beheerapp en Apple Watch-walkietalkie. Beheer je Apple-a
 | Widget/Control Bundle ID | `nl.lrvdlinden.Voxie.watchkitapp.control` |
 | Development Team | `EU3UY476T6` |
 | Marketingversie | `1.0.0` |
-| Build | `21` |
+| Build | `22` |
 | Type | iPhone-companion met zelfstandig werkende Watch-app |
 | Backend | Supabase Edge Function |
 
@@ -33,6 +33,15 @@ Wanneer de eerste migratie al handmatig is uitgevoerd en niet in Supabase's migr
 De server controleert Apple ID-tokens met Apple's ondertekende sleutelset en gebruikt korte, eenmalige login-challenges. Hij bewaart een unieke, niet-hoofdlettergevoelige gebruikersnaam, de gekozen avatar en een vriendenlijst per Apple-account. Na Apple-aanmelding op de iPhone ontvangt de gekoppelde Watch een eigen sessie via WatchConnectivity. Audioframes worden na 30 seconden niet meer opgehaald. Voor publieke lancering zijn aanvullende beveiligingsmaatregelen nodig, zoals rate limiting, sessie-intrekking, quotas, opschoning en een privacybeleid. Audio is HTTPS-versleuteld, maar niet end-to-end-versleuteld.
 
 ## Xcode
+
+### Build 22 — Luider en volledig afspelen
+
+- **Veel luider:** luisteren gebruikt nu de audiocategorie `.playback` (volle luidsprekersterkte). Voorheen stond de sessie permanent op `.playAndRecord` + `.voiceChat`, met spraakverwerking die het geluid sterk dempte. Alleen tijdens het indrukken schakelt Voxie naar opnemen.
+- **Normalisatie:** elk bericht wordt vóór verzenden op een gelijk, luid niveau gebracht (tot 10× versterking op basis van het 99,5%-niveau, met een zachte limiter in plaats van afkappen).
+- **Niets meer kwijt bij afspelen:** wanneer de audio-engine stopt (routewissel, categoriewissel, onderbreking) gooide iOS/watchOS de ingeplande stukken weg en bevestigde Voxie ze toch als afgespeeld, waarna de server ze wiste. Nu blijft elk stuk bewaard tot het echt gehoord is en wordt het na een herstart opnieuw ingepland.
+- **Begin en eind niet meer afgekapt:** de microfoon blijft 0,35 s open na loslaten (laatste woord) en het startpiepje klinkt vóórdat de microfoon opent. Elke opname gebruikt een verse audio-engine (geen verouderd invoerformaat).
+- Grotere uploadstukken (~3 s, server staat nu tot 128 KB per stuk toe): minder pauzes tussen stukken bij de ontvanger.
+- Half-duplex zoals Apple: je kunt niet beginnen te praten terwijl je vriend nog praat.
 
 ### Build 21 — APNs actief na secrets
 

@@ -151,7 +151,7 @@ Deno.serve(async (req: Request) => {
     : url.pathname.endsWith("/health") ? "/health" : url.pathname;
   // `push: true` means the APNs secrets reached this deployment.
   if (path === "/health") return json(200, {
-    ok: true, push: Boolean(apnsKeyID && apnsTeamID && apnsPrivateKey), build: 21
+    ok: true, push: Boolean(apnsKeyID && apnsTeamID && apnsPrivateKey), build: 22
   });
 
   // Client nonce is never trusted on its own: it must match a server-issued,
@@ -457,7 +457,7 @@ Deno.serve(async (req: Request) => {
       return fail(403, "friend unavailable");
     }
     const pcm = new Uint8Array(await req.arrayBuffer());
-    if (pcm.length < 2 || pcm.length > 32768 || pcm.length % 2) return fail(413, "invalid audio frame");
+    if (pcm.length < 2 || pcm.length > 131072 || pcm.length % 2) return fail(413, "invalid audio frame");
     const { error } = await db.from("voxie_audio_frames")
       .insert({ sender: me.id, recipient: targetID, pcm_base64: decodeAudio(pcm) });
     if (error) return fail(500, "audio upload failed");

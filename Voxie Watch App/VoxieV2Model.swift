@@ -90,6 +90,7 @@ final class VoxieV2Model: ObservableObject {
     private var sendFailures = 0
     private var transmitRecipientID: String?
     private var flushNotBefore = Date.distantPast
+    private var finishingRecording = false
     private var isReceiving = false
     private var scheduledPlayback = 0
     private var incomingEndTask: Task<Void, Never>?
@@ -286,9 +287,12 @@ final class VoxieV2Model: ObservableObject {
         refreshTask = nil; audioTask = nil; transmitTask = nil
         // Keep unsent recordings in memory for when the app becomes active again.
         // A short background transition must never silently discard speech.
-        if isSpeaking { outgoingStartedAt = Date() }
-        holding = false
-        audio.stopCapture(); isSpeaking = false
+        if isSpeaking {
+            endSpeaking()          // finish + normalise; sent when active again
+        } else {
+            holding = false
+            if !finishingRecording { audio.stopCapture() }
+        }
         maxRecordingTask?.cancel(); maxRecordingTask = nil
         isSending = false
     }
@@ -352,9 +356,12 @@ final class VoxieV2Model: ObservableObject {
         }
         // An unavailable friend may still be addressed: the server then sends
         // them a "wil met je praten" notification, like Apple's Walkie-Talkie.
-        guard !isSpeaking else { return }
+        guard !isSpeaking, !finishingRecording else { return }
         guard !isSending, outgoing.isEmpty else {
             status = "Vorig bericht wordt nog verzonden…"; return
+        }
+        guard incomingFriendID == nil, !audio.isPlaying else {
+            status = "Wacht tot \(incomingName ?? "je vriend") klaar is"; return
         }
         holding = true
         transmitRecipientID = friend.id
@@ -364,6 +371,10 @@ final class VoxieV2Model: ObservableObject {
             guard holding else { return }
             WKInterfaceDevice.current().play(.start)
             audio.playChirp(rising: true)
+            // Let the chirp finish before the microphone opens, so it is
+            // neither cut off by the session switch nor recorded.
+            try? await Task.sleep(for: .milliseconds(110))
+            guard holding else { return }
             do {
                 try audio.startCapture { [weak self] pcm in
                     Task { @MainActor [weak self] in self?.outgoing.append(pcm) }
@@ -386,21 +397,47 @@ final class VoxieV2Model: ObservableObject {
         #if os(watchOS)
         holding = false
         maxRecordingTask?.cancel(); maxRecordingTask = nil
-        audio.stopCapture()
         let hadSpeech = isSpeaking
         isSpeaking = false
-        if hadSpeech {
-            // Let the AVAudioEngine tap deliver its final PCM buffer before
-            // draining the queue; the finger release and tap can race.
-            flushNotBefore = Date().addingTimeInterval(0.25)
-            outgoingStartedAt = Date()
-            messageStartPending = true
-            WKInterfaceDevice.current().play(.stop)
-            audio.playChirp(rising: false)
-            status = outgoing.isEmpty ? "Opname verwerken…" : "Versturen…"
+        guard hadSpeech else { audio.stopCapture(); return }
+        WKInterfaceDevice.current().play(.stop)
+        status = "Versturen…"
+        finishingRecording = true
+        flushNotBefore = .distantFuture
+        Task { [weak self] in
+            // Keep the microphone open a moment after release: people let go
+            // while saying the last word, and the tap still holds a buffer.
+            try? await Task.sleep(for: .milliseconds(350))
+            guard let self else { return }
+            self.audio.stopCapture()
+            try? await Task.sleep(for: .milliseconds(80))   // last tap callbacks
+            self.prepareOutgoingMessage()
+            self.finishingRecording = false
+            self.outgoingStartedAt = Date()
+            self.messageStartPending = !self.outgoing.isEmpty
+            self.flushNotBefore = Date()
+            self.audio.playChirp(rising: false)
+            if self.outgoing.isEmpty { self.status = "Geen geluid opgenomen" }
         }
         #endif
     }
+
+    /// Normalises the whole message (loud, even level) and splits it into
+    /// upload chunks of ~3 seconds.
+    private func prepareOutgoingMessage() {
+        let message = outgoing.reduce(into: Data()) { $0.append($1) }
+        outgoing.removeAll()
+        guard message.count >= 3_200 else { return }    // < 0.1 s: accidental tap
+        let loud = LiveAudio.normalize(message)
+        var offset = 0
+        while offset < loud.count {
+            let end = min(loud.count, offset + Self.uploadChunkBytes)
+            outgoing.append(loud.subdata(in: offset..<end))
+            offset = end
+        }
+    }
+
+    private static let uploadChunkBytes = 96_000
 
     private func refresh() async {
         guard ready else { return }
@@ -496,6 +533,10 @@ final class VoxieV2Model: ObservableObject {
         incomingSafetyTask?.cancel()
         incomingSafetyTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(20))
+            // Still really playing (long message, rescheduled buffers)? Wait.
+            while !Task.isCancelled, let self, self.audio.isPlaying {
+                try? await Task.sleep(for: .seconds(2))
+            }
             guard !Task.isCancelled, let self, self.incomingFriendID == sender else { return }
             self.scheduledPlayback = 0
             self.incomingFriendID = nil
@@ -580,14 +621,16 @@ final class VoxieV2Model: ObservableObject {
         isSending = true
         defer { isSending = false }
         var chunk = Data()
-        while let next = outgoing.first, chunk.count + next.count <= 32768 {
+        while let next = outgoing.first, chunk.count + next.count <= Self.uploadChunkBytes {
             chunk.append(next)
             outgoing.removeFirst()
         }
         if chunk.isEmpty, !outgoing.isEmpty {
             let large = outgoing.removeFirst()
-            chunk = Data(large.prefix(32768))
-            if large.count > 32768 { outgoing.insert(Data(large.dropFirst(32768)), at: 0) }
+            chunk = Data(large.prefix(Self.uploadChunkBytes))
+            if large.count > Self.uploadChunkBytes {
+                outgoing.insert(Data(large.dropFirst(Self.uploadChunkBytes)), at: 0)
+            }
         }
         do {
             let first = messageStartPending
