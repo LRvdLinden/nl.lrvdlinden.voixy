@@ -11,7 +11,7 @@ Geel-zwarte iPhone/iPad-beheerapp en Apple Watch-walkietalkie. Beheer je Apple-a
 | Widget/Control Bundle ID | `nl.lrvdlinden.Voxie.watchkitapp.control` |
 | Development Team | `EU3UY476T6` |
 | Marketingversie | `1.0.0` |
-| Build | `22` |
+| Build | `23` |
 | Type | iPhone-companion met zelfstandig werkende Watch-app |
 | Backend | Supabase Edge Function |
 
@@ -33,6 +33,12 @@ Wanneer de eerste migratie al handmatig is uitgevoerd en niet in Supabase's migr
 De server controleert Apple ID-tokens met Apple's ondertekende sleutelset en gebruikt korte, eenmalige login-challenges. Hij bewaart een unieke, niet-hoofdlettergevoelige gebruikersnaam, de gekozen avatar en een vriendenlijst per Apple-account. Na Apple-aanmelding op de iPhone ontvangt de gekoppelde Watch een eigen sessie via WatchConnectivity. Audioframes worden na 30 seconden niet meer opgehaald. Voor publieke lancering zijn aanvullende beveiligingsmaatregelen nodig, zoals rate limiting, sessie-intrekking, quotas, opschoning en een privacybeleid. Audio is HTTPS-versleuteld, maar niet end-to-end-versleuteld.
 
 ## Xcode
+
+### Build 23 — Meer apps van de ontwikkelaar
+
+- Onderaan **Instellingen** op iPhone/iPad staat onder *Ontdekken* een kaart **Meer apps van de ontwikkelaar** in Voxie-geel/zwart. Tikken opent https://lrvdlinden.app.
+- De tekst volgt de taal van het apparaat: Nederlands op een Nederlandstalig toestel, anders Engels.
+- Niet zichtbaar tijdens de eerste installatie. De Watch-app is ongewijzigd.
 
 ### Build 22 — Luider en volledig afspelen
 

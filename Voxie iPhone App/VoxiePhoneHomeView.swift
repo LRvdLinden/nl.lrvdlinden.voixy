@@ -706,6 +706,15 @@ private struct PhoneSettingsSheet: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+                if !onboarding {
+                    Section {
+                        DeveloperAppsCard()
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    } header: {
+                        Text(DeveloperAppsCard.copy.section)
+                    }
+                }
             }
             .navigationTitle(onboarding ? "Voxie instellen" : "Instellingen")
             .toolbar {
@@ -819,5 +828,79 @@ private struct PhoneFriendsSheet: View {
             .navigationTitle("Vrienden")
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+
+/// "Meer apps van de ontwikkelaar" card in Voxie's own yellow/black brand.
+/// Opens https://lrvdlinden.app. Copy follows the device language (NL/EN).
+private struct DeveloperAppsCard: View {
+    struct Copy {
+        let section, title, subtitle, action, accessibility: String
+    }
+
+    static var copy: Copy {
+        let language = Locale.preferredLanguages.first?.lowercased() ?? "nl"
+        if language.hasPrefix("nl") {
+            return Copy(section: "Ontdekken",
+                        title: "Meer apps van de ontwikkelaar",
+                        subtitle: "Apps voor iPhone, iPad, Apple TV en Homey",
+                        action: "Bekijk",
+                        accessibility: "Meer apps van de ontwikkelaar bekijken op lrvdlinden.app")
+        }
+        return Copy(section: "Discover",
+                    title: "More apps from the developer",
+                    subtitle: "Apps for iPhone, iPad, Apple TV and Homey",
+                    action: "View",
+                    accessibility: "View more apps from the developer on lrvdlinden.app")
+    }
+
+    private let url = URL(string: "https://lrvdlinden.app")!
+
+    var body: some View {
+        let copy = Self.copy
+        Link(destination: url) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(LinearGradient(colors: [Palette.yellow, Color(red: 1, green: 0.72, blue: 0)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                    Image(systemName: "square.grid.2x2.fill")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(.black)
+                }
+                .frame(width: 58, height: 58)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(copy.title)
+                        .font(.system(.headline, design: .rounded).weight(.bold))
+                        .foregroundStyle(Palette.yellow)
+                        .multilineTextAlignment(.leading)
+                    Text(copy.subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.6))
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 8)
+                VStack(spacing: 2) {
+                    Text(copy.action)
+                        .font(.system(.headline, design: .rounded).weight(.bold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(Palette.yellow, in: Capsule())
+                    Text("lrvdlinden.app")
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+            }
+            .padding(16)
+            .background(Palette.charcoal, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Palette.yellow.opacity(0.18), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(copy.accessibility)
+        .accessibilityAddTraits(.isLink)
     }
 }
